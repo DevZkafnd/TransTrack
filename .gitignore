@@ -1,12 +1,20 @@
 # Mengabaikan SEMUA folder node_modules
 **/node_modules
 
-# Mengabaikan SEMUA file .env
+# Mengabaikan SEMUA file environment
 **/.env
+**/.env.local
+**/.env.*.local
 
-# Mengabaikan SEMUA kunci service account
-**/transtrack-86fba-f*.json
+# Mengabaikan SEMUA kunci service account Firebase
+**/transtrack-86fba-*.json
 **/serviceAccountKey.json
+**/*-firebase-adminsdk-*.json
 
-# Lain-lain
+# File sistem operasi
 .DS_Store
+Thumbs.db
+
+# Logs
+**/logs
+**/*.log

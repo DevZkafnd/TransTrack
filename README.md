@@ -44,6 +44,35 @@ TransTrack/                    # Root repository
 └── README.md                 # Dokumentasi utama
 ```
 
+### Konfigurasi .gitignore Utama (Root)
+
+Untuk menjaga agar monorepo ini bersih dan aman, file `.gitignore` di root direktori (`TransTrack/.gitignore`) berisi aturan untuk mengabaikan file di semua layanan:
+
+```gitignore
+# Mengabaikan SEMUA folder node_modules
+**/node_modules
+
+# Mengabaikan SEMUA file environment
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Mengabaikan SEMUA kunci service account Firebase
+**/transtrack-86fba-*.json
+**/serviceAccountKey.json
+**/*-firebase-adminsdk-*.json
+
+# File sistem operasi
+.DS_Store
+Thumbs.db
+
+# Logs
+**/logs
+**/*.log
+```
+
+**Catatan Penting:** Setiap folder service (routeservice, busservice, dll.) memiliki `.gitignore` sendiri untuk aturan spesifik service tersebut.
+
 ## Prasyarat
 
 - Node.js (v14 atau lebih tinggi)
@@ -66,32 +95,47 @@ cd routeservice
 npm install
 ```
 
-3. **Setup Firebase**
+3. **Setup Firebase (Kredensial Rahasia)**
 
-   File Firebase Service Account Key sudah tersedia di folder `routeservice`:
-   ```
-   routeservice/transtrack-86fba-firebase-adminsdk-fbsvc-fd4ee18a0d.json
-   ```
+   ⚠️ **PENTING: File Service Account Key adalah RAHASIA dan TIDAK BOLEH ada di dalam Git.**
    
-   Konfigurasi akan **otomatis menggunakan file ini** jika tidak ada environment variable yang di-set.
+   Layanan ini memerlukan Kunci Service Account Firebase untuk terhubung ke Cloud Firestore. Setiap developer harus mengunduh file kunci mereka sendiri.
    
-   **Opsi A: Menggunakan File Default (Sudah Terkonfigurasi)**
+   **Langkah Setup:**
    
-   - Tidak perlu setup tambahan, aplikasi akan otomatis menggunakan file default
-   - Project ID: `transtrack-86fba`
-
-   **Opsi B: Menggunakan Environment Variable (Opsional)**
+   1. Buka [Firebase Console](https://console.firebase.google.com/) → Pilih project `transtrack-86fba`
+   2. Buka **Project Settings** (ikon gear di sidebar) → Tab **Service accounts**
+   3. Klik tombol **"Generate new private key"**
+   4. Dialog akan muncul, klik **"Generate key"**
+   5. File `.json` akan otomatis terunduh ke komputer Anda
+   6. **Ubah namanya** menjadi `serviceAccountKey.json` (atau nama yang diinginkan)
+   7. **Pindahkan file `.json` ini** ke dalam folder `routeservice/`
    
-   Buat file `.env` di folder `routeservice`:
+   **Catatan Keamanan:**
+   
+   - File `.gitignore` di root dan di `routeservice/` sudah dikonfigurasi untuk mengabaikan semua file kunci service account
+   - File `.json` ini **TIDAK AKAN** ter-upload ke GitHub
+   - Jangan pernah commit file kunci service account ke Git
+   - Jangan bagikan file kunci ini kepada siapa pun
+   
+   **Konfigurasi Otomatis:**
+   
+   Aplikasi akan otomatis mendeteksi file kunci jika ditempatkan di folder `routeservice/` dengan nama:
+   - `serviceAccountKey.json`, atau
+   - `transtrack-86fba-firebase-adminsdk-*.json`
+   
+   **Alternatif: Menggunakan Environment Variable**
+   
+   Anda juga dapat menggunakan environment variable untuk menentukan path ke file kunci. Buat file `.env` di folder `routeservice`:
    
    ```env
-   FIREBASE_SERVICE_ACCOUNT_KEY=./transtrack-86fba-firebase-adminsdk-fbsvc-fd4ee18a0d.json
+   FIREBASE_SERVICE_ACCOUNT_KEY=./serviceAccountKey.json
    FIREBASE_PROJECT_ID=transtrack-86fba
    PORT=3000
    NODE_ENV=development
    ```
    
-   **Opsi C: Menggunakan Application Default Credentials**
+   **Opsi Lain: Application Default Credentials**
    
    - Setup gcloud CLI dan autentikasi
    - Atau set environment variable `GOOGLE_APPLICATION_CREDENTIALS`
@@ -393,6 +437,31 @@ Setelah index dibuat, query akan lebih efisien.
 ### Port Already in Use
 - Ubah PORT di file `.env`
 - Atau kill process yang menggunakan port tersebut
+
+## Template untuk Layanan Lain
+
+File README.md ini dapat digunakan sebagai **template standar** untuk semua layanan provider lainnya (BusService, DriverService, UserService, dll.).
+
+### Cara Menggunakan Template:
+
+1. **Salin folder `routeservice`** dan ganti namanya (misal: menjadi `busservice`)
+2. **Salin file README.md ini** ke dalam folder service baru
+3. **Lakukan "Find and Replace"** di dalam README.md untuk istilah-istilah berikut:
+
+   | Cari Teks Ini | Ganti Dengan (Contoh untuk BusService) |
+   |---------------|----------------------------------------|
+   | `routeservice` | `busservice` |
+   | `RouteService` | `BusService` |
+   | `Rute` / `rute` | `Bus` / `bus` |
+   | `Route Schema` | `Bus Schema` |
+   | `/api/routes` | `/api/buses` |
+   | `routeName`, `routeCode` | `busName`, `licensePlate` (sesuai skema) |
+   | `Stop Schema` | (Hapus atau ganti sesuai kebutuhan) |
+
+4. **Update skema data** sesuai dengan entitas yang dikelola service tersebut
+5. **Update endpoint API** sesuai dengan operasi CRUD yang diperlukan
+
+Dengan menggunakan template ini, semua layanan provider akan memiliki dokumentasi yang konsisten dan profesional.
 
 ## Lisensi
 
