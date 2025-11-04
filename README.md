@@ -1,11 +1,12 @@
 # RouteService - TransTrack Microservice
 
-RouteService adalah layanan backend pertama dalam arsitektur microservice TransTrack yang berfungsi sebagai Penyedia API (Provider) murni untuk mengelola data master rute dan halte.
+RouteService adalah layanan backend dalam arsitektur microservice TransTrack yang berfungsi sebagai penyedia API (Provider) untuk mengelola data master rute dan halte menggunakan PostgreSQL.
 
 ## Fitur
 
 - ✅ RESTful API dengan operasi CRUD lengkap untuk rute
-- ✅ Integrasi dengan Cloud Firestore (Firebase)
+- ✅ Persistensi data dengan PostgreSQL
+- ✅ Database migration dengan node-pg-migrate
 - ✅ Dokumentasi API interaktif menggunakan Swagger/OpenAPI
 - ✅ Validasi data request
 - ✅ Error handling yang komprehensif
@@ -16,7 +17,9 @@ RouteService adalah layanan backend pertama dalam arsitektur microservice TransT
 
 - **Node.js** - Runtime environment
 - **Express.js** - Web framework
-- **Firebase Admin SDK** - Integrasi dengan Cloud Firestore
+- **PostgreSQL** - Database
+- **pg** - PostgreSQL driver untuk Node.js
+- **node-pg-migrate** - Database migrations
 - **Swagger (OpenAPI)** - Dokumentasi API
 - **swagger-jsdoc** - Generate Swagger dari JSDoc comments
 - **swagger-ui-express** - UI untuk dokumentasi Swagger
@@ -28,17 +31,16 @@ TransTrack/                    # Root repository
 │
 ├── routeservice/              # Layanan RouteService
 │   ├── config/
-│   │   ├── firebase.js       # Konfigurasi Firebase/Firestore
-│   │   └── swagger.js        # Konfigurasi Swagger
+│   │   ├── db.js             # Koneksi Pool PostgreSQL (pg)
+│   │   ├── swagger.js        # Konfigurasi Swagger
+│   │   └── migration.config.js # Konfigurasi node-pg-migrate
+│   ├── migrations/
+│   │   └── 0001_initial_schema.js  # Migrasi skema awal
 │   ├── routes/
-│   │   └── routes.js         # Endpoint CRUD untuk rute
+│   │   └── routes.js         # Endpoint CRUD untuk rute (pakai PostgreSQL)
 │   ├── server.js             # Entry point aplikasi
 │   ├── package.json          # Dependencies RouteService
-│   ├── package-lock.json
-│   ├── .gitignore            # Gitignore khusus RouteService
-│   ├── transtrack-86fba-firebase-adminsdk-*.json  # Firebase Service Account Key
-│   ├── ENV_SETUP.md          # Panduan setup environment variables
-│   └── TROUBLESHOOTING.md    # Panduan troubleshooting
+│   └── package-lock.json
 │
 ├── .gitignore                # Gitignore utama (root)
 └── README.md                 # Dokumentasi utama
@@ -75,10 +77,9 @@ Thumbs.db
 
 ## Prasyarat
 
-- Node.js (v14 atau lebih tinggi)
+- Node.js (v16 atau lebih tinggi)
 - npm atau yarn
-- Akun Firebase dengan proyek "transtrack-86fba"
-- Firebase Service Account Key sudah tersedia di root directory
+- PostgreSQL 13+ (lokal atau managed)
 
 ## Instalasi
 
@@ -95,50 +96,25 @@ cd routeservice
 npm install
 ```
 
-3. **Setup Firebase (Kredensial Rahasia)**
+3. **Setup Environment (.env)**
 
-   ⚠️ **PENTING: File Service Account Key adalah RAHASIA dan TIDAK BOLEH ada di dalam Git.**
-   
-   Layanan ini memerlukan Kunci Service Account Firebase untuk terhubung ke Cloud Firestore. Setiap developer harus mengunduh file kunci mereka sendiri.
-   
-   **Langkah Setup:**
-   
-   1. Buka [Firebase Console](https://console.firebase.google.com/) → Pilih project `transtrack-86fba`
-   2. Buka **Project Settings** (ikon gear di sidebar) → Tab **Service accounts**
-   3. Klik tombol **"Generate new private key"**
-   4. Dialog akan muncul, klik **"Generate key"**
-   5. File `.json` akan otomatis terunduh ke komputer Anda
-   6. **Ubah namanya** menjadi `serviceAccountKey.json` (atau nama yang diinginkan)
-   7. **Pindahkan file `.json` ini** ke dalam folder `routeservice/`
-   
-   **Catatan Keamanan:**
-   
-   - File `.gitignore` di root dan di `routeservice/` sudah dikonfigurasi untuk mengabaikan semua file kunci service account
-   - File `.json` ini **TIDAK AKAN** ter-upload ke GitHub
-   - Jangan pernah commit file kunci service account ke Git
-   - Jangan bagikan file kunci ini kepada siapa pun
-   
-   **Konfigurasi Otomatis:**
-   
-   Aplikasi akan otomatis mendeteksi file kunci jika ditempatkan di folder `routeservice/` dengan nama:
-   - `serviceAccountKey.json`, atau
-   - `transtrack-86fba-firebase-adminsdk-*.json`
-   
-   **Alternatif: Menggunakan Environment Variable**
-   
-   Anda juga dapat menggunakan environment variable untuk menentukan path ke file kunci. Buat file `.env` di folder `routeservice`:
-   
+   Buat file `.env` di folder `routeservice` dengan isi:
+
    ```env
-   FIREBASE_SERVICE_ACCOUNT_KEY=./serviceAccountKey.json
-   FIREBASE_PROJECT_ID=transtrack-86fba
    PORT=3000
-   NODE_ENV=development
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=transtrack
+   DB_USER=postgres
+   DB_PASSWORD=postgres
+   DB_SSL=false
    ```
-   
-   **Opsi Lain: Application Default Credentials**
-   
-   - Setup gcloud CLI dan autentikasi
-   - Atau set environment variable `GOOGLE_APPLICATION_CREDENTIALS`
+
+4. **Jalankan migrasi database**
+
+   ```bash
+   npm run migrate
+   ```
 
 ## Menjalankan Aplikasi
 
@@ -310,14 +286,14 @@ Dokumentasi menggunakan Swagger UI yang memungkinkan Anda untuk:
 
 ```javascript
 {
-  id: string,                    // Auto-generated oleh Firestore
+  id: string,                    // UUID (generated oleh database)
   routeName: string,             // Required: Nama rute
   routeCode: string,             // Required: Kode unik rute
   description: string,           // Optional: Deskripsi rute
   stops: Array<Stop>,            // Required: Array halte
   status: string,                // Enum: 'active' | 'inactive' | 'maintenance'
-  createdAt: Timestamp,          // Auto-generated
-  updatedAt: Timestamp            // Auto-generated
+  createdAt: string,             // ISO timestamp (timestamptz)
+  updatedAt: string              // ISO timestamp (timestamptz)
 }
 ```
 
@@ -334,21 +310,31 @@ Dokumentasi menggunakan Swagger UI yang memungkinkan Anda untuk:
 }
 ```
 
-## Firestore Collection
+## Skema Database (PostgreSQL)
 
-Data rute disimpan dalam collection `routes` di Cloud Firestore dengan struktur berikut:
+Tabel utama:
 
-```
-routes/
-  ├── {routeId}/
-  │   ├── routeName: string
-  │   ├── routeCode: string
-  │   ├── description: string
-  │   ├── stops: array
-  │   ├── status: string
-  │   ├── createdAt: Timestamp
-  │   └── updatedAt: Timestamp
-```
+- `routes`
+  - `id UUID PRIMARY KEY`
+  - `route_name TEXT NOT NULL`
+  - `route_code TEXT NOT NULL UNIQUE`
+  - `description TEXT NOT NULL DEFAULT ''`
+  - `status route_status NOT NULL DEFAULT 'active'`
+  - `created_at timestamptz NOT NULL DEFAULT now()`
+  - `updated_at timestamptz NOT NULL DEFAULT now()`
+
+- `stops`
+  - `id UUID PRIMARY KEY`
+  - `route_id UUID NOT NULL REFERENCES routes(id) ON DELETE CASCADE`
+  - `stop_name TEXT NOT NULL`
+  - `stop_code TEXT NOT NULL`
+  - `latitude numeric(10,6) NOT NULL`
+  - `longitude numeric(10,6) NOT NULL`
+  - `sequence integer NOT NULL`
+  - `created_at timestamptz NOT NULL DEFAULT now()`
+  - `updated_at timestamptz NOT NULL DEFAULT now()`
+
+Enum: `route_status` dengan nilai `active | inactive | maintenance`.
 
 ## Error Handling
 
@@ -406,37 +392,11 @@ curl -X POST http://localhost:3000/api/routes \
   }'
 ```
 
-## Troubleshooting
+## Migrations & Operasional DB
 
-### Firebase Connection Error
-- Pastikan Service Account Key valid dan memiliki akses ke Firestore
-- Pastikan project ID sesuai dengan proyek Firebase Anda
-- Pastikan Firestore API sudah diaktifkan di Firebase Console
-
-### Firestore Index Error
-Jika Anda mendapatkan error tentang composite index yang diperlukan, ada dua solusi:
-
-**Solusi 1: Query sudah dioptimasi (Default)**
-- Aplikasi sudah dioptimasi untuk menghindari kebutuhan composite index
-- Ketika filter `status` digunakan, sorting dilakukan di aplikasi
-- Ini bekerja tanpa perlu membuat index tambahan
-
-**Solusi 2: Membuat Composite Index (Untuk Performa Lebih Baik)**
-Jika Anda ingin performa yang lebih baik dengan banyak data, buat composite index di Firestore:
-
-1. Buka Firebase Console: https://console.firebase.google.com/project/transtrack-86fba/firestore/indexes
-2. Klik link yang muncul di error message, atau buat index manual dengan:
-   - Collection ID: `routes`
-   - Fields:
-     - `status` (Ascending)
-     - `createdAt` (Descending)
-3. Tunggu sampai index selesai dibuat (biasanya beberapa menit)
-
-Setelah index dibuat, query akan lebih efisien.
-
-### Port Already in Use
-- Ubah PORT di file `.env`
-- Atau kill process yang menggunakan port tersebut
+- Buat/ubah skema: tambah file di `routeservice/migrations` lalu jalankan `npm run migrate`
+- Unique constraint pada `route_code` akan menghasilkan error kode `23505`. Aplikasi sudah menangani ini dan mengembalikan HTTP 400.
+- Port already in use: ubah `PORT` pada `.env` atau hentikan proses yang menggunakan port tersebut.
 
 ## Template untuk Layanan Lain
 

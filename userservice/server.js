@@ -1,0 +1,97 @@
+const express = require('express');
+const cors = require('cors');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
+const usersRouter = require('./routes/users');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3002;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Health check endpoint
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Endpoint pengecekan kesehatan layanan
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Layanan berjalan dengan baik
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: OK
+ *                 service:
+ *                   type: string
+ *                   example: UserService
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ */
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    service: 'UserService',
+    pesan: 'Layanan berjalan dengan baik',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Swagger documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Dokumentasi API UserService'
+}));
+
+// API Routes
+app.use('/api/users', usersRouter);
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    pesan: 'UserService API - TransTrack Microservice',
+    message: 'API untuk mengelola data master pengguna/penumpang',
+    version: '1.0.0',
+    documentation: '/api-docs',
+    health: '/health'
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Tidak Ditemukan',
+    message: `Endpoint ${req.method} ${req.path} tidak ditemukan`
+  });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error('Kesalahan:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Kesalahan server internal',
+    message: err.message || 'Terjadi kesalahan pada server'
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`UserService berjalan pada port ${PORT}`);
+  console.log(`Dokumentasi API tersedia di http://localhost:${PORT}/api-docs`);
+  console.log(`Health check tersedia di http://localhost:${PORT}/health`);
+});
+
+module.exports = app;
+

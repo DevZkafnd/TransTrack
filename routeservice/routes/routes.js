@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db, admin } = require('../config/firebase');
-const COLLECTION_NAME = 'routes';
+const { pool } = require('../config/db');
 
 /**
  * @swagger
@@ -56,102 +55,65 @@ const COLLECTION_NAME = 'routes';
 router.get('/', async (req, res) => {
   try {
     const { status, limit = 100, offset = 0 } = req.query;
-    let query = db.collection(COLLECTION_NAME);
+    const limitNum = Number(limit);
+    const offsetNum = Number(offset);
 
-    const limitNum = parseInt(limit);
-    const offsetNum = parseInt(offset);
-
-    // Jika ada filter status, tidak bisa langsung orderBy karena memerlukan composite index
-    // Solusi: Ambil semua data, filter dan sort di aplikasi, lalu paginate
+    const params = [];
+    let where = '';
     if (status) {
-      // Query dengan filter status saja (tanpa orderBy untuk menghindari composite index)
-      query = query.where('status', '==', status);
-      const snapshot = await query.get();
-      
-      // Konversi ke array dan sort di aplikasi
-      let routes = [];
-      snapshot.forEach(doc => {
-        routes.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-
-      // Urutkan berdasarkan createdAt descending
-      routes.sort((a, b) => {
-        let aTime = 0;
-        let bTime = 0;
-        
-        // Handle Firestore Timestamp
-        if (a.createdAt) {
-          aTime = a.createdAt.toMillis ? a.createdAt.toMillis() : (a.createdAt.seconds * 1000) || 0;
-        }
-        if (b.createdAt) {
-          bTime = b.createdAt.toMillis ? b.createdAt.toMillis() : (b.createdAt.seconds * 1000) || 0;
-        }
-        
-        // Handle Date object
-        if (!aTime && a.createdAt instanceof Date) {
-          aTime = a.createdAt.getTime();
-        }
-        if (!bTime && b.createdAt instanceof Date) {
-          bTime = b.createdAt.getTime();
-        }
-        
-        return bTime - aTime;
-      });
-
-      // Pagination di aplikasi
-      const total = routes.length;
-      const paginatedRoutes = routes.slice(offsetNum, offsetNum + limitNum);
-
-      res.json({
-        success: true,
-        data: paginatedRoutes,
-        total,
-        limit: limitNum,
-        offset: offsetNum
-      });
-    } else {
-      // Jika tidak ada filter, bisa langsung orderBy
-      query = query.orderBy('createdAt', 'desc');
-
-      // Pagination dengan cursor-based (lebih efisien)
-      if (offsetNum > 0) {
-        // Untuk offset > 0, perlu ambil semua sampai offset kemudian startAfter
-        const offsetSnapshot = await db.collection(COLLECTION_NAME)
-          .orderBy('createdAt', 'desc')
-          .limit(offsetNum)
-          .get();
-        
-        if (offsetSnapshot.docs.length > 0) {
-          const lastDoc = offsetSnapshot.docs[offsetSnapshot.docs.length - 1];
-          query = query.startAfter(lastDoc);
-        }
-      }
-
-      const snapshot = await query.limit(limitNum).get();
-      
-      const routes = [];
-      snapshot.forEach(doc => {
-        routes.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-
-      // Ambil total count
-      const totalSnapshot = await db.collection(COLLECTION_NAME).get();
-      const total = totalSnapshot.size;
-
-      res.json({
-        success: true,
-        data: routes,
-        total,
-        limit: limitNum,
-        offset: offsetNum
-      });
+      params.push(status);
+      where = `WHERE status = $${params.length}`;
     }
+
+    const listSql = `
+      WITH filtered AS (
+        SELECT id,
+               route_name,
+               route_code,
+               description,
+               status,
+               created_at,
+               updated_at
+        FROM routes
+        ${where}
+      ), ranked AS (
+        SELECT ROW_NUMBER() OVER (ORDER BY created_at ASC, route_code ASC, id ASC) AS display_id,
+               id,
+               route_name,
+               route_code,
+               description,
+               status,
+               created_at,
+               updated_at
+        FROM filtered
+      )
+      SELECT id,
+             display_id AS "displayId",
+             route_name AS "routeName",
+             route_code AS "routeCode",
+             description,
+             status,
+             created_at AS "createdAt",
+             updated_at AS "updatedAt"
+      FROM ranked
+      ORDER BY display_id ASC
+      LIMIT $${params.push(limitNum)} OFFSET $${params.push(offsetNum)}
+    `;
+
+    const countSql = `SELECT COUNT(*)::int AS cnt FROM routes ${where}`;
+
+    const [listResult, countResult] = await Promise.all([
+      pool.query(listSql, params),
+      pool.query(countSql, params.slice(0, status ? 1 : 0)),
+    ]);
+
+    res.json({
+      success: true,
+      data: listResult.rows,
+      total: countResult.rows[0].cnt,
+      limit: limitNum,
+      offset: offsetNum,
+    });
   } catch (error) {
     console.error('Kesalahan saat mengambil data rute:', error);
     res.status(500).json({
@@ -204,9 +166,31 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const doc = await db.collection(COLLECTION_NAME).doc(id).get();
 
-    if (!doc.exists) {
+    const routeSql = `
+      WITH ranked AS (
+        SELECT ROW_NUMBER() OVER (ORDER BY created_at ASC, route_code ASC, id ASC) AS display_id,
+               id,
+               route_name,
+               route_code,
+               description,
+               status,
+               created_at,
+               updated_at
+        FROM routes
+      )
+      SELECT id,
+             display_id AS "displayId",
+             route_name AS "routeName",
+             route_code AS "routeCode",
+             description,
+             status,
+             created_at AS "createdAt",
+             updated_at AS "updatedAt"
+      FROM ranked WHERE id = $1
+    `;
+    const routeResult = await pool.query(routeSql, [id]);
+    if (routeResult.rowCount === 0) {
       return res.status(404).json({
         success: false,
         error: 'Route not found',
@@ -214,13 +198,23 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    res.json({
-      success: true,
-      data: {
-        id: doc.id,
-        ...doc.data()
-      }
-    });
+    const stopsSql = `
+      SELECT id,
+             stop_name AS "stopName",
+             stop_code AS "stopCode",
+             latitude::float AS latitude,
+             longitude::float AS longitude,
+             sequence
+      FROM stops
+      WHERE route_id = $1
+      ORDER BY sequence ASC
+    `;
+    const stopsResult = await pool.query(stopsSql, [id]);
+
+    const route = routeResult.rows[0];
+    route.stops = stopsResult.rows;
+
+    res.json({ success: true, data: route });
   } catch (error) {
     console.error('Kesalahan saat mengambil rute:', error);
     res.status(500).json({
@@ -295,11 +289,11 @@ router.get('/:id', async (req, res) => {
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/', async (req, res) => {
+  const client = await pool.connect();
   try {
     const { routeName, routeCode, description, stops, status = 'active' } = req.body;
 
-    // Validasi field yang wajib diisi
-    if (!routeName || !routeCode || !stops || !Array.isArray(stops) || stops.length === 0) {
+    if (!routeName || !routeCode || !Array.isArray(stops) || stops.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'Kesalahan validasi',
@@ -307,7 +301,6 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Validasi halte
     for (let i = 0; i < stops.length; i++) {
       const stop = stops[i];
       if (!stop.stopName || !stop.stopCode || stop.latitude === undefined || stop.longitude === undefined) {
@@ -319,51 +312,92 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // Periksa jika kode rute sudah ada
-    const existingRoute = await db.collection(COLLECTION_NAME)
-      .where('routeCode', '==', routeCode)
-      .get();
+    await client.query('BEGIN');
 
-    if (!existingRoute.empty) {
+    // Check if numeric_id column exists
+    const hasNumericIdCol = await client.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'routes' AND column_name = 'numeric_id'`
+    );
+
+    let routeResult;
+    if (hasNumericIdCol.rowCount > 0) {
+      // Compute next numeric_id (continue after the highest existing number)
+      const nextNumeric = await client.query('SELECT COALESCE(MAX(numeric_id), 0) + 1 AS next FROM routes');
+      const nextVal = nextNumeric.rows[0].next;
+      const insertWithNumeric = `
+        INSERT INTO routes (numeric_id, route_name, route_code, description, status)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, route_name AS "routeName", route_code AS "routeCode", description, status, created_at AS "createdAt", updated_at AS "updatedAt";
+      `;
+      routeResult = await client.query(insertWithNumeric, [nextVal, routeName, routeCode, description || '', status]);
+    } else {
+      const insertRouteSql = `
+        INSERT INTO routes (route_name, route_code, description, status)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, route_name AS "routeName", route_code AS "routeCode", description, status, created_at AS "createdAt", updated_at AS "updatedAt";
+      `;
+      routeResult = await client.query(insertRouteSql, [routeName, routeCode, description || '', status]);
+    }
+    const route = routeResult.rows[0];
+
+    // Compute displayId for the inserted route
+    const displayIdSql = `
+      WITH ranked AS (
+        SELECT ROW_NUMBER() OVER (ORDER BY created_at ASC, route_code ASC, id ASC) AS display_id,
+               id
+        FROM routes
+      )
+      SELECT display_id AS "displayId" FROM ranked WHERE id = $1
+    `;
+    const displayRow = await client.query(displayIdSql, [route.id]);
+    if (displayRow.rows[0]) {
+      route.displayId = displayRow.rows[0].displayId;
+    }
+
+    // Insert stops
+    const normalizedStops = stops.map((s, idx) => ({
+      stopName: s.stopName,
+      stopCode: s.stopCode,
+      latitude: s.latitude,
+      longitude: s.longitude,
+      sequence: s.sequence !== undefined ? s.sequence : idx + 1,
+    }));
+    const values = [];
+    const placeholders = normalizedStops.map((s, i) => {
+      const base = i * 6;
+      values.push(route.id, s.stopName, s.stopCode, s.latitude, s.longitude, s.sequence);
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+    }).join(',');
+
+    const insertStopsSql = `
+      INSERT INTO stops (route_id, stop_name, stop_code, latitude, longitude, sequence)
+      VALUES ${placeholders}
+      RETURNING id, stop_name AS "stopName", stop_code AS "stopCode", latitude::float AS latitude, longitude::float AS longitude, sequence;
+    `;
+    const stopsResult = await client.query(insertStopsSql, values);
+
+    await client.query('COMMIT');
+
+    route.stops = stopsResult.rows;
+
+    res.status(201).json({ success: true, message: 'Rute berhasil dibuat', data: route });
+  } catch (error) {
+    await (async () => { try { await client.query('ROLLBACK'); } catch (_) {} })();
+    if (error && error.code === '23505') {
       return res.status(400).json({
         success: false,
         error: 'Kode rute duplikat',
-        message: `Rute dengan kode ${routeCode} sudah ada`
+        message: 'Rute dengan kode tersebut sudah ada'
       });
     }
-
-    const now = new Date();
-    const routeData = {
-      routeName,
-      routeCode,
-      description: description || '',
-      stops: stops.map((stop, index) => ({
-        ...stop,
-        sequence: stop.sequence !== undefined ? stop.sequence : index + 1
-      })),
-      status,
-      createdAt: admin.firestore.Timestamp.fromDate(now),
-      updatedAt: admin.firestore.Timestamp.fromDate(now)
-    };
-
-    const docRef = await db.collection(COLLECTION_NAME).add(routeData);
-    const createdDoc = await docRef.get();
-
-    res.status(201).json({
-      success: true,
-      message: 'Rute berhasil dibuat',
-      data: {
-        id: createdDoc.id,
-        ...createdDoc.data()
-      }
-    });
-  } catch (error) {
     console.error('Kesalahan saat membuat rute:', error);
     res.status(500).json({
       success: false,
       error: 'Kesalahan server internal',
       message: error.message || 'Terjadi kesalahan saat membuat rute'
     });
+  } finally {
+    client.release();
   }
 });
 
@@ -440,24 +474,12 @@ router.post('/', async (req, res) => {
  *               $ref: '#/components/schemas/Error'
  */
 router.put('/:id', async (req, res) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
     const { routeName, routeCode, description, stops, status } = req.body;
 
-    // Periksa apakah rute ada
-    const docRef = db.collection(COLLECTION_NAME).doc(id);
-    const doc = await docRef.get();
-
-    if (!doc.exists) {
-      return res.status(404).json({
-        success: false,
-        error: 'Rute tidak ditemukan',
-        message: `Rute dengan ID ${id} tidak ditemukan`
-      });
-    }
-
-    // Validasi field yang wajib diisi
-    if (!routeName || !routeCode || !stops || !Array.isArray(stops) || stops.length === 0) {
+    if (!routeName || !routeCode || !Array.isArray(stops) || stops.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'Kesalahan validasi',
@@ -465,7 +487,6 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    // Validasi halte
     for (let i = 0; i < stops.length; i++) {
       const stop = stops[i];
       if (!stop.stopName || !stop.stopCode || stop.latitude === undefined || stop.longitude === undefined) {
@@ -477,54 +498,92 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    // Periksa jika kode rute sudah ada di rute lain
-    if (routeCode !== doc.data().routeCode) {
-      const existingRoute = await db.collection(COLLECTION_NAME)
-        .where('routeCode', '==', routeCode)
-        .get();
+    await client.query('BEGIN');
 
-      if (!existingRoute.empty) {
-        return res.status(400).json({
-          success: false,
-          error: 'Kode rute duplikat',
-          message: `Rute dengan kode ${routeCode} sudah ada`
-        });
-      }
+    // Ensure route exists
+    const exists = await client.query('SELECT 1 FROM routes WHERE id = $1', [id]);
+    if (exists.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        error: 'Rute tidak ditemukan',
+        message: `Rute dengan ID ${id} tidak ditemukan`
+      });
     }
 
-    const updateData = {
-      routeName,
-      routeCode,
-      description: description || '',
-      stops: stops.map((stop, index) => ({
-        ...stop,
-        sequence: stop.sequence !== undefined ? stop.sequence : index + 1
-      })),
-      status: status || doc.data().status,
-      updatedAt: admin.firestore.Timestamp.fromDate(new Date())
-    };
+    const updateRouteSql = `
+      UPDATE routes
+      SET route_name = $1,
+          route_code = $2,
+          description = $3,
+          status = COALESCE($4, status),
+          updated_at = NOW()
+      WHERE id = $5
+      RETURNING id, route_name AS "routeName", route_code AS "routeCode", description, status, created_at AS "createdAt", updated_at AS "updatedAt";
+    `;
+    const routeResult = await client.query(updateRouteSql, [routeName, routeCode, description || '', status || null, id]);
+    const route = routeResult.rows[0];
 
-    // Pertahankan createdAt
-    updateData.createdAt = doc.data().createdAt;
+    // Compute displayId for the updated route
+    const displayIdSql = `
+      WITH ranked AS (
+        SELECT ROW_NUMBER() OVER (ORDER BY created_at ASC, route_code ASC, id ASC) AS display_id,
+               id
+        FROM routes
+      )
+      SELECT display_id AS "displayId" FROM ranked WHERE id = $1
+    `;
+    const displayRow = await client.query(displayIdSql, [id]);
+    if (displayRow.rows[0]) {
+      route.displayId = displayRow.rows[0].displayId;
+    }
 
-    await docRef.update(updateData);
-    const updatedDoc = await docRef.get();
+    // Replace stops
+    await client.query('DELETE FROM stops WHERE route_id = $1', [id]);
+    const normalizedStops = stops.map((s, idx) => ({
+      stopName: s.stopName,
+      stopCode: s.stopCode,
+      latitude: s.latitude,
+      longitude: s.longitude,
+      sequence: s.sequence !== undefined ? s.sequence : idx + 1,
+    }));
+    const values = [];
+    const placeholders = normalizedStops.map((s, i) => {
+      const base = i * 6;
+      values.push(id, s.stopName, s.stopCode, s.latitude, s.longitude, s.sequence);
+      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+    }).join(',');
+    if (placeholders.length > 0) {
+      const insertStopsSql = `
+        INSERT INTO stops (route_id, stop_name, stop_code, latitude, longitude, sequence)
+        VALUES ${placeholders}
+        RETURNING id, stop_name AS "stopName", stop_code AS "stopCode", latitude::float AS latitude, longitude::float AS longitude, sequence;
+      `;
+      const stopsResult = await client.query(insertStopsSql, values);
+      route.stops = stopsResult.rows;
+    } else {
+      route.stops = [];
+    }
 
-    res.json({
-      success: true,
-      message: 'Rute berhasil diperbarui',
-      data: {
-        id: updatedDoc.id,
-        ...updatedDoc.data()
-      }
-    });
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Rute berhasil diperbarui', data: route });
   } catch (error) {
+    await (async () => { try { await client.query('ROLLBACK'); } catch (_) {} })();
+    if (error && error.code === '23505') {
+      return res.status(400).json({
+        success: false,
+        error: 'Kode rute duplikat',
+        message: 'Rute dengan kode tersebut sudah ada'
+      });
+    }
     console.error('Error updating route:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: error.message
     });
+  } finally {
+    client.release();
   }
 });
 
@@ -597,15 +656,16 @@ router.put('/:id', async (req, res) => {
  *               $ref: '#/components/schemas/Error'
  */
 router.patch('/:id', async (req, res) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
-    const updateFields = req.body;
+    const updateFields = req.body || {};
 
-    // Periksa apakah rute ada
-    const docRef = db.collection(COLLECTION_NAME).doc(id);
-    const doc = await docRef.get();
+    await client.query('BEGIN');
 
-    if (!doc.exists) {
+    const exists = await client.query('SELECT 1 FROM routes WHERE id = $1', [id]);
+    if (exists.rowCount === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({
         success: false,
         error: 'Rute tidak ditemukan',
@@ -613,76 +673,102 @@ router.patch('/:id', async (req, res) => {
       });
     }
 
-    // Validasi halte jika diupdate
-    if (updateFields.stops) {
-      if (!Array.isArray(updateFields.stops) || updateFields.stops.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'Kesalahan validasi',
-          message: 'stops harus berupa array tidak boleh kosong'
-        });
-      }
+    // Build dynamic update
+    const cols = [];
+    const vals = [];
+    let idx = 1;
+    if (updateFields.routeName !== undefined) { cols.push(`route_name = $${idx++}`); vals.push(updateFields.routeName); }
+    if (updateFields.routeCode !== undefined) { cols.push(`route_code = $${idx++}`); vals.push(updateFields.routeCode); }
+    if (updateFields.description !== undefined) { cols.push(`description = $${idx++}`); vals.push(updateFields.description); }
+    if (updateFields.status !== undefined) { cols.push(`status = $${idx++}`); vals.push(updateFields.status); }
+    if (cols.length > 0) {
+      const sql = `UPDATE routes SET ${cols.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING id, route_name AS "routeName", route_code AS "routeCode", description, status, created_at AS "createdAt", updated_at AS "updatedAt"`;
+      vals.push(id);
+      var routeResult = await client.query(sql, vals);
+    } else {
+      var routeResult = await client.query('SELECT id, route_name AS "routeName", route_code AS "routeCode", description, status, created_at AS "createdAt", updated_at AS "updatedAt" FROM routes WHERE id = $1', [id]);
+    }
 
-      for (let i = 0; i < updateFields.stops.length; i++) {
-        const stop = updateFields.stops[i];
-        if (!stop.stopName || !stop.stopCode || stop.latitude === undefined || stop.longitude === undefined) {
-          return res.status(400).json({
-            success: false,
-            error: 'Kesalahan validasi',
-            message: `Halte pada index ${i} harus memiliki stopName, stopCode, latitude, dan longitude`
-          });
+    let route = routeResult.rows[0];
+
+    // Compute displayId for the route
+    const displayIdSql = `
+      WITH ranked AS (
+        SELECT ROW_NUMBER() OVER (ORDER BY created_at ASC, route_code ASC, id ASC) AS display_id,
+               id
+        FROM routes
+      )
+      SELECT display_id AS "displayId" FROM ranked WHERE id = $1
+    `;
+    const displayRow = await client.query(displayIdSql, [id]);
+    if (displayRow.rows[0]) {
+      route.displayId = displayRow.rows[0].displayId;
+    }
+
+    if (Array.isArray(updateFields.stops)) {
+      if (updateFields.stops.length === 0) {
+        await client.query('DELETE FROM stops WHERE route_id = $1', [id]);
+        route.stops = [];
+      } else {
+        // Validate stops
+        for (let i = 0; i < updateFields.stops.length; i++) {
+          const s = updateFields.stops[i];
+          if (!s.stopName || !s.stopCode || s.latitude === undefined || s.longitude === undefined) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+              success: false,
+              error: 'Kesalahan validasi',
+              message: `Halte pada index ${i} harus memiliki stopName, stopCode, latitude, dan longitude`
+            });
+          }
         }
-      }
 
-      // Tambahkan sequence jika tidak ada
-      updateFields.stops = updateFields.stops.map((stop, index) => ({
-        ...stop,
-        sequence: stop.sequence !== undefined ? stop.sequence : index + 1
-      }));
+        await client.query('DELETE FROM stops WHERE route_id = $1', [id]);
+        const normalizedStops = updateFields.stops.map((s, idx2) => ({
+          stopName: s.stopName,
+          stopCode: s.stopCode,
+          latitude: s.latitude,
+          longitude: s.longitude,
+          sequence: s.sequence !== undefined ? s.sequence : idx2 + 1,
+        }));
+        const values = [];
+        const placeholders = normalizedStops.map((s, i) => {
+          const base = i * 6;
+          values.push(id, s.stopName, s.stopCode, s.latitude, s.longitude, s.sequence);
+          return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+        }).join(',');
+        const insertStopsSql = `
+          INSERT INTO stops (route_id, stop_name, stop_code, latitude, longitude, sequence)
+          VALUES ${placeholders}
+          RETURNING id, stop_name AS "stopName", stop_code AS "stopCode", latitude::float AS latitude, longitude::float AS longitude, sequence;
+        `;
+        const stopsResult = await client.query(insertStopsSql, values);
+        route.stops = stopsResult.rows;
+      }
+    } else {
+      const stops = await client.query('SELECT id, stop_name AS "stopName", stop_code AS "stopCode", latitude::float AS latitude, longitude::float AS longitude, sequence FROM stops WHERE route_id = $1 ORDER BY sequence ASC', [id]);
+      route.stops = stops.rows;
     }
 
-    // Periksa kode rute duplikat jika diupdate
-    if (updateFields.routeCode && updateFields.routeCode !== doc.data().routeCode) {
-      const existingRoute = await db.collection(COLLECTION_NAME)
-        .where('routeCode', '==', updateFields.routeCode)
-        .get();
-
-      if (!existingRoute.empty) {
-        return res.status(400).json({
-          success: false,
-          error: 'Kode rute duplikat',
-          message: `Rute dengan kode ${updateFields.routeCode} sudah ada`
-        });
-      }
-    }
-
-    // Siapkan data untuk update
-    const updateData = {
-      ...updateFields,
-      updatedAt: admin.firestore.Timestamp.fromDate(new Date())
-    };
-
-    // Jangan update createdAt
-    delete updateData.createdAt;
-
-    await docRef.update(updateData);
-    const updatedDoc = await docRef.get();
-
-    res.json({
-      success: true,
-      message: 'Rute berhasil diperbarui',
-      data: {
-        id: updatedDoc.id,
-        ...updatedDoc.data()
-      }
-    });
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Rute berhasil diperbarui', data: route });
   } catch (error) {
+    await (async () => { try { await client.query('ROLLBACK'); } catch (_) {} })();
+    if (error && error.code === '23505') {
+      return res.status(400).json({
+        success: false,
+        error: 'Kode rute duplikat',
+        message: 'Rute dengan kode tersebut sudah ada'
+      });
+    }
     console.error('Error updating route:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: error.message
     });
+  } finally {
+    client.release();
   }
 });
 
@@ -729,10 +815,8 @@ router.patch('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const docRef = db.collection(COLLECTION_NAME).doc(id);
-    const doc = await docRef.get();
-
-    if (!doc.exists) {
+    const del = await pool.query('DELETE FROM routes WHERE id = $1', [id]);
+    if (del.rowCount === 0) {
       return res.status(404).json({
         success: false,
         error: 'Rute tidak ditemukan',
@@ -740,12 +824,29 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    await docRef.delete();
+    // If numeric_id column exists, resequence to start from 1 contiguously
+    try {
+      const hasNumericIdCol = await pool.query(
+        `SELECT 1 FROM information_schema.columns WHERE table_name = 'routes' AND column_name = 'numeric_id'`
+      );
+      if (hasNumericIdCol.rowCount > 0) {
+        const resequenceSql = `
+          WITH ordered AS (
+            SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC, route_code ASC, id ASC) AS rn
+            FROM routes
+          )
+          UPDATE routes r
+          SET numeric_id = o.rn
+          FROM ordered o
+          WHERE r.id = o.id
+        `;
+        await pool.query(resequenceSql);
+      }
+    } catch (_) {
+      // ignore resequence errors; deletion already done
+    }
 
-    res.json({
-      success: true,
-      message: 'Rute berhasil dihapus'
-    });
+    res.json({ success: true, message: 'Rute berhasil dihapus' });
   } catch (error) {
     console.error('Kesalahan saat menghapus rute:', error);
     res.status(500).json({
