@@ -30,22 +30,40 @@
 
 ## 🚀 Quick Start
 
+### Setup & Run (Satu Perintah)
+
+```bash
+# Setup lengkap dan jalankan server
+npm run setup:full && npm run dev
+```
+
+Atau secara terpisah:
+
+```bash
+# 1. Setup lengkap (install deps, setup .env, run migrations)
+npm run setup:full
+
+# 2. Run server (auto-check dependencies & .env)
+npm run dev
+```
+
+**Server akan berjalan di `http://localhost:3000`**
+
+### Setup Manual (Jika Perlu)
+
 ```bash
 # 1. Install dependencies
 npm install
 
-# 2. Setup environment
-cp env.example .env
-# Edit .env dengan konfigurasi database Anda
+# 2. Setup environment (otomatis dibuat dari env.example jika belum ada)
+# File .env akan dibuat otomatis saat npm run dev atau npm run setup:full
 
 # 3. Setup database
-npm run migrate
+npm run setup
 
 # 4. Run server
 npm run dev
 ```
-
-Server akan berjalan di `http://localhost:3000`
 
 ---
 
@@ -449,9 +467,15 @@ curl -X DELETE http://localhost:3000/api/routes/550e8400-e29b-41d4-a716-44665544
 ### Scripts Available
 
 ```bash
-npm start        # Run server (production)
-npm run dev      # Run server dengan nodemon (development)
-npm run migrate  # Run database migration
+npm start              # Run server (production)
+npm run dev            # Run server dengan auto-check (dependencies, .env, database)
+npm run setup          # Setup database saja (fix migrations + run migrations)
+npm run setup:full     # Setup lengkap (install deps + setup .env + setup database + verify)
+npm run migrate        # Run database migration
+npm run verify         # Verify migrations dan database structure
+npm run assign-buses   # Auto-assign buses ke routes (perlu BusService atau database)
+npm run assign-buses-manual # Manual assign buses ke routes (interaktif)
+npm run check-services # Check status semua service (RouteService, BusService, Gateway)
 ```
 
 ### Struktur Folder
@@ -463,11 +487,22 @@ routeservice/
 │   ├── swagger.js              # Swagger configuration
 │   └── migration.config.js     # Migration configuration
 ├── migrations/
-│   └── 0001_initial_schema.js  # Initial migration
+│   ├── 20251105000000_initial_schema.js
+│   ├── 20251106000000_add_numeric_id.js
+│   └── 20251109000000_add_bus_id_to_routes.js
 ├── routes/
 │   └── routes.js               # API routes
 ├── scripts/
-│   └── migrate.js              # Migration script
+│   ├── dev.js                  # Development script (auto-check)
+│   ├── setup.js                # Full setup script
+│   ├── setup-database.js       # Database setup script
+│   ├── migrate.js              # Migration script
+│   ├── verify-migrations.js    # Verify migrations
+│   ├── assign-buses-to-routes.js # Auto-assign buses
+│   ├── assign-buses-manual.js  # Manual assign buses
+│   └── check-services.js       # Check service status
+├── services/
+│   └── busService.js           # BusService integration
 ├── server.js                   # Entry point
 ├── package.json
 └── env.example

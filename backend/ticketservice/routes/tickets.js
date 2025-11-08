@@ -1,6 +1,27 @@
 const express = require('express');
 const router = express.Router();
+const axios = require('axios');
 const { pool } = require('../config/db');
+require('dotenv').config();
+
+// UserService URL from environment
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3002';
+
+// Helper function to validate user with UserService
+const validateUser = async (userId) => {
+  try {
+    const response = await axios.get(`${USER_SERVICE_URL}/api/users/${userId}`, {
+      timeout: 5000,
+    });
+    return response.data?.success === true ? response.data.data : null;
+  } catch (error) {
+    console.error('Error validating user:', error.message);
+    if (error.response?.status === 404) {
+      return null; // User not found
+    }
+    throw error; // Re-throw other errors (network, timeout, etc.)
+  }
+};
 
 /**
  * @swagger
@@ -38,6 +59,29 @@ router.post('/', async (req, res) => {
     if (!userId || !scheduleId || !amount) {
       return res.status(400).json({ success: false, error: 'Kesalahan validasi', message: 'userId, scheduleId, amount wajib diisi' });
     }
+
+    // Validasi user dengan memanggil UserService
+    let user;
+    try {
+      user = await validateUser(userId);
+      if (!user) {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'User Tidak Ditemukan', 
+          message: `User dengan ID ${userId} tidak ditemukan di UserService` 
+        });
+      }
+    } catch (userError) {
+      console.error('Error saat validasi user:', userError.message);
+      // Jika UserService tidak tersedia, return error
+      return res.status(503).json({ 
+        success: false, 
+        error: 'Service Tidak Tersedia', 
+        message: 'UserService sedang tidak tersedia. Tidak dapat memvalidasi user.' 
+      });
+    }
+
+    // Jika user valid, buat tiket
     const sql = `
       INSERT INTO tickets (user_id, schedule_id, schedule_label, amount, currency, status)
       VALUES ($1, $2, $3, $4, $5, 'pending')
@@ -69,9 +113,30 @@ router.post('/', async (req, res) => {
  */
 router.get('/', async (req, res) => {
   try {
-    const { userId } = req.query;
+    let { userId } = req.query;
     if (!userId) return res.status(400).json({ success: false, error: 'Kesalahan validasi', message: 'userId wajib diisi' });
-    const result = await pool.query('SELECT * FROM tickets WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+    
+    // Handle jika userId adalah array atau JSON string
+    if (Array.isArray(userId)) {
+      userId = userId[0]; // Ambil elemen pertama
+    } else if (typeof userId === 'string') {
+      // Cek jika string adalah JSON array
+      try {
+        const parsed = JSON.parse(userId);
+        if (Array.isArray(parsed)) {
+          userId = parsed[0]; // Ambil elemen pertama
+        }
+      } catch (e) {
+        // Bukan JSON, gunakan string langsung
+      }
+    }
+    
+    // Pastikan userId adalah string UUID yang valid
+    if (typeof userId !== 'string' || userId.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'Kesalahan validasi', message: 'userId harus berupa string UUID yang valid' });
+    }
+    
+    const result = await pool.query('SELECT * FROM tickets WHERE user_id = $1 ORDER BY created_at DESC', [userId.trim()]);
     return res.json({ success: true, data: result.rows });
   } catch (e) {
     console.error('Gagal mengambil daftar tiket:', e);

@@ -4,6 +4,7 @@ Kumpulan service Express yang terhubung PostgreSQL dan terdokumentasi Swagger.
 
 ## Service yang tersedia
 
+- **GatewayService (8000)** - API Gateway sebagai entry point tunggal untuk frontend
 - RouteService (3000)
 - DriverService (3001)
 - UserService (3002)
@@ -18,7 +19,12 @@ Dari folder root monorepo:
 npm run dev
 ```
 
-Ini akan menjalankan semua service secara paralel. TicketService akan otomatis menjalankan migrasi tabel `tickets` saat start.
+Ini akan menjalankan semua service secara paralel termasuk GatewayService. TicketService akan otomatis menjalankan migrasi tabel `tickets` saat start.
+
+**Catatan Penting:**
+- Frontend sekarang mengakses semua service melalui GatewayService (port 8000)
+- GatewayService meneruskan request ke service-service backend yang sesuai
+- TicketService memvalidasi user dengan memanggil UserService sebelum membuat tiket (inter-service communication)
 
 ## Menjalankan salah satu service
 

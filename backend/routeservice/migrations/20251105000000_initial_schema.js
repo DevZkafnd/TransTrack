@@ -66,4 +66,3 @@ exports.down = pgm => {
   pgm.dropType('route_status');
 };
 
-

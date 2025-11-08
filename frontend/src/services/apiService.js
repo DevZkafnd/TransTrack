@@ -3,15 +3,13 @@ import axios from 'axios';
 /**
  * Service untuk melakukan panggilan API ke API Gateway
  * 
- * Menggunakan variabel REACT_APP_API_GATEWAY_URL dari .env.development
+ * Menggunakan variabel REACT_APP_API_GATEWAY_URL dari .env
  * Default: http://localhost:8000/api
  */
 
-// Resolver base URL: jika ENV kosong atau masih mengarah ke localhost:8000 (gateway mati), pakai UserService (3002)
+// Base URL untuk API Gateway
 const ENV_URL = process.env.REACT_APP_API_GATEWAY_URL;
-const API_GATEWAY_URL = (!ENV_URL || /localhost:8000/i.test(ENV_URL))
-  ? 'http://localhost:3002/api'
-  : ENV_URL;
+const API_GATEWAY_URL = ENV_URL || 'http://localhost:8000/api';
 
 // Buat instance axios dengan konfigurasi default
 const apiClient = axios.create({
@@ -53,11 +51,11 @@ apiClient.interceptors.response.use(
 );
 
 /**
- * Fungsi untuk mengambil data routes dari RouteService
+ * Fungsi untuk mengambil data routes dari RouteService (via Gateway)
  */
 export const getRoutes = async () => {
   try {
-    const response = await axios.get('http://localhost:3000/api/routes');
+    const response = await apiClient.get('/routes');
     return response.data;
   } catch (error) {
     console.error('Error fetching routes:', error);
@@ -66,11 +64,11 @@ export const getRoutes = async () => {
 };
 
 /**
- * Fungsi untuk mengambil data drivers dari DriverService
+ * Fungsi untuk mengambil data drivers dari DriverService (via Gateway)
  */
 export const getDrivers = async () => {
   try {
-    const response = await axios.get('http://localhost:3001/api/drivers');
+    const response = await apiClient.get('/drivers');
     return response.data;
   } catch (error) {
     console.error('Error fetching drivers:', error);
@@ -79,7 +77,7 @@ export const getDrivers = async () => {
 };
 
 /**
- * Fungsi untuk mengambil data maintenance berdasarkan bus ID
+ * Fungsi untuk mengambil data maintenance berdasarkan bus ID (via Gateway)
  */
 export const getMaintenanceByBusId = async (busId, status = null) => {
   try {
@@ -87,7 +85,7 @@ export const getMaintenanceByBusId = async (busId, status = null) => {
     if (status) {
       params.status = status;
     }
-    const response = await axios.get(`http://localhost:3003/api/maintenance/bus/${busId}`, { params });
+    const response = await apiClient.get(`/maintenance/bus/${busId}`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching maintenance:', error);
@@ -96,16 +94,16 @@ export const getMaintenanceByBusId = async (busId, status = null) => {
 };
 
 /**
- * Fungsi untuk mengecek apakah bus sedang dalam maintenance
+ * Fungsi untuk mengecek apakah bus sedang dalam maintenance (via Gateway)
  */
 export const checkBusMaintenance = async (busId) => {
   try {
     // Cek maintenance dengan status scheduled atau in_progress
     const [scheduledResponse, inProgressResponse] = await Promise.all([
-      axios.get(`http://localhost:3003/api/maintenance/bus/${busId}`, {
+      apiClient.get(`/maintenance/bus/${busId}`, {
         params: { status: 'scheduled', limit: 1 }
       }).catch(() => ({ data: { data: [] } })),
-      axios.get(`http://localhost:3003/api/maintenance/bus/${busId}`, {
+      apiClient.get(`/maintenance/bus/${busId}`, {
         params: { status: 'in_progress', limit: 1 }
       }).catch(() => ({ data: { data: [] } }))
     ]);
@@ -120,82 +118,66 @@ export const checkBusMaintenance = async (busId) => {
 };
 
 /**
- * Fungsi untuk mengambil data buses (mock data karena belum ada API khusus)
- * Dalam implementasi nyata, ini bisa diambil dari service khusus atau dari maintenance
+ * Fungsi untuk mengambil data buses dari BusService (via Gateway)
  */
 export const getBuses = async () => {
-  // Untuk sementara, return mock data
-  // Di production, ini harus diambil dari API bus service
-  return {
-    success: true,
-    data: [
-      { id: 'BUS-001', plate: 'B 1234 CD', capacity: 40, status: 'available' },
-      { id: 'BUS-002', plate: 'B 5678 EF', capacity: 35, status: 'available' },
-      { id: 'BUS-003', plate: 'B 9012 GH', capacity: 45, status: 'available' },
-    ]
-  };
-};
-
-/**
- * Contoh fungsi untuk mengambil data tracking real-time
- */
-export const getTrackingData = async (busId) => {
   try {
-    const response = await apiClient.get(`/tracking/${busId}`);
+    const response = await apiClient.get('/buses');
     return response.data;
   } catch (error) {
-    console.error('Error fetching tracking data:', error);
+    console.error('Error fetching buses:', error);
     throw error;
   }
 };
 
-// TicketService helpers
-export const createTicket = async ({ userId, scheduleId, amount, currency = 'IDR' }) => {
-  const res = await apiClient.post('http://localhost:3004/api/tickets', { userId, scheduleId, amount, currency });
+
+// TicketService helpers (via Gateway)
+export const createTicket = async ({ userId, scheduleId, scheduleLabel, amount, currency = 'IDR' }) => {
+  const res = await apiClient.post('/tickets', { userId, scheduleId, scheduleLabel, amount, currency });
   return res.data;
 };
 
 export const updateTicketStatus = async (ticketId, { status, paymentRef }) => {
-  const res = await apiClient.patch(`http://localhost:3004/api/tickets/${ticketId}/status`, { status, paymentRef });
+  const res = await apiClient.patch(`/tickets/${ticketId}/status`, { status, paymentRef });
   return res.data;
 };
 
 export const getUserTickets = async (userId) => {
-  const res = await apiClient.get('http://localhost:3004/api/tickets', { params: { userId } });
+  const res = await apiClient.get('/tickets', { params: { userId } });
   return res.data;
 };
 
 export const validateTicket = async (code) => {
-  const res = await apiClient.post('http://localhost:3004/api/tickets/validate', { code });
+  const res = await apiClient.post('/tickets/validate', { code });
   return res.data;
 };
 
-// Schedules (use RouteService as basic listing placeholder)
+// Schedules - mengambil schedule yang sudah ada di database (seperti jadwal penerbangan)
+// Schedule sudah ada di database, user hanya memilih dan membeli tiket
 export const searchSchedules = async (query) => {
-  const res = await axios.get('http://localhost:3000/api/routes');
-  const data = res.data?.data || res.data || [];
-  if (!query) return data;
-  const q = String(query).toLowerCase();
-  return data.filter((r) => (r.route_name || r.routeName || '').toLowerCase().includes(q));
+  try {
+    const res = await apiClient.get('/schedules');
+    const data = res.data?.data || res.data || [];
+    if (!query) return data;
+    const q = String(query).toLowerCase();
+    // Filter berdasarkan routeName atau route
+    return data.filter((s) => 
+      (s.routeName || s.route || '').toLowerCase().includes(q) ||
+      (s.route_name || '').toLowerCase().includes(q)
+    );
+  } catch (error) {
+    console.error('Error searching schedules:', error);
+    return [];
+  }
 };
 
 /**
- * Fungsi untuk membuat schedule baru
- * Karena belum ada API khusus untuk schedules, kita simpan di localStorage sementara
+ * Fungsi untuk membuat schedule baru (via Gateway)
  */
 export const createSchedule = async (scheduleData) => {
   try {
-    // Untuk sementara, simpan di localStorage
-    // Di production, ini harus dikirim ke API schedule service
-    const schedules = JSON.parse(localStorage.getItem('schedules') || '[]');
-    const newSchedule = {
-      id: Date.now().toString(),
-      ...scheduleData,
-      createdAt: new Date().toISOString()
-    };
-    schedules.push(newSchedule);
-    localStorage.setItem('schedules', JSON.stringify(schedules));
-    return { success: true, data: newSchedule };
+    const response = await apiClient.post('/schedules', scheduleData);
+    return response.data;
   } catch (error) {
     console.error('Error creating schedule:', error);
     throw error;
@@ -203,16 +185,103 @@ export const createSchedule = async (scheduleData) => {
 };
 
 /**
- * Fungsi untuk mengambil semua schedules
+ * Fungsi untuk mengambil semua schedules (via Gateway)
  */
-export const getSchedules = async () => {
+export const getSchedules = async (params = {}) => {
   try {
-    // Untuk sementara, ambil dari localStorage
-    // Di production, ini harus diambil dari API schedule service
-    const schedules = JSON.parse(localStorage.getItem('schedules') || '[]');
-    return { success: true, data: schedules };
+    const response = await apiClient.get('/schedules', { params });
+    return response.data;
   } catch (error) {
     console.error('Error fetching schedules:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fungsi untuk mengambil schedule berdasarkan ID (via Gateway)
+ */
+export const getScheduleById = async (id) => {
+  try {
+    const response = await apiClient.get(`/schedules/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching schedule:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fungsi untuk mengupdate schedule (via Gateway)
+ */
+export const updateSchedule = async (id, scheduleData) => {
+  try {
+    const response = await apiClient.put(`/schedules/${id}`, scheduleData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating schedule:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fungsi untuk menghapus schedule (via Gateway)
+ */
+export const deleteSchedule = async (id) => {
+  try {
+    const response = await apiClient.delete(`/schedules/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting schedule:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fungsi untuk mengambil bus yang sedang beroperasi dengan data lengkap (aggregated)
+ * Menggunakan endpoint /dashboard/operating-buses yang mengambil dari BusService + MaintenanceService
+ * TIDAK menggunakan ScheduleService
+ */
+export const getOperatingBuses = async () => {
+  try {
+    const response = await apiClient.get('/dashboard/operating-buses');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching operating buses:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fungsi untuk mengambil data tracking bus dengan informasi lengkap (routes, stops, drivers, schedules)
+ * Menggunakan endpoint /dashboard/tracking yang mengaggregate dari semua services
+ */
+export const getTrackingData = async () => {
+  try {
+    const response = await apiClient.get('/dashboard/tracking');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching tracking data:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fungsi untuk trigger assign buses ke routes
+ * Menggunakan endpoint /routes/assign-buses di RouteService
+ */
+export const triggerAssignBuses = async () => {
+  try {
+    console.log('🔄 [Frontend] Memanggil triggerAssignBuses...');
+    const response = await apiClient.post('/routes/assign-buses');
+    console.log('✅ [Frontend] triggerAssignBuses response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('❌ [Frontend] Error triggering assign buses:', error);
+    console.error('❌ [Frontend] Error details:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
     throw error;
   }
 };

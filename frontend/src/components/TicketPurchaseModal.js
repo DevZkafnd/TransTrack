@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import apiClient, { createSchedule, getBuses, getDrivers } from '../services/apiService';
+import { createTicket, updateTicketStatus } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 
 const Backdrop = ({ onClose }) => (
@@ -56,86 +56,56 @@ const TicketPurchaseModal = ({ open, onClose, scheduleId, scheduleLabel, route, 
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    if (!scheduleId) {
-      alert('Pilih jadwal terlebih dahulu');
+    // Validasi: scheduleId wajib ada (schedule harus dipilih dari database)
+    if (!scheduleId || scheduleId.trim() === '') {
+      onNotify?.('error', 'Pilih jadwal terlebih dahulu. Jadwal harus dipilih dari daftar yang tersedia.');
       return;
     }
     if (!user?.id) {
-      alert('Anda belum login');
+      onNotify?.('error', 'Anda belum login. Silakan login terlebih dahulu.');
       return;
     }
     try {
       setSubmitting(true);
-      // 1) Buat tiket pending di TicketService (port 3004)
-      // scheduleId bisa berupa UUID (route.id) atau string, jadi kita gunakan langsung
-      const res = await apiClient.post('http://localhost:3004/api/tickets', {
+      // 1) Buat tiket pending di TicketService (via Gateway)
+      // TicketService akan memvalidasi user dengan memanggil UserService secara otomatis
+      // scheduleId harus dari schedule yang sudah ada di database
+      // Tidak membuat schedule baru, hanya membeli tiket untuk schedule yang sudah ada
+      const ticketRes = await createTicket({
         userId: user.id,
-        scheduleId: scheduleId || route?.id || 'schedule-default',
+        scheduleId: scheduleId, // ID schedule dari database (wajib ada)
         scheduleLabel: scheduleLabel || route?.routeName || route?.route_name || 'Rute',
         amount: Number(amount),
         currency: 'IDR'
       });
-      if (res.data?.success) {
-        // 2) Tandai tiket sukses (tanpa payment gateway eksternal)
-        await apiClient.patch(`http://localhost:3004/api/tickets/${res.data.data.id}/status`, {
+      
+      if (ticketRes?.success) {
+        // 2) Tandai tiket sukses (tanpa payment gateway eksternal, via Gateway)
+        await updateTicketStatus(ticketRes.data.id, {
           status: 'success',
           paymentRef: paymentMethod
         });
         
-        // 3) Buat schedule setelah pembayaran berhasil
-        if (route) {
-          try {
-            // Ambil bus dan driver pertama yang tersedia
-            const [busesRes, driversRes] = await Promise.all([
-              getBuses().catch(() => ({ success: false, data: [] })),
-              getDrivers().catch(() => ({ success: false, data: [] }))
-            ]);
-            
-            const buses = busesRes.success && busesRes.data && Array.isArray(busesRes.data) ? busesRes.data : [];
-            const drivers = driversRes.success && driversRes.data && Array.isArray(driversRes.data) ? driversRes.data : [];
-            
-            // Gunakan bus dan driver pertama yang tersedia, atau gunakan data default
-            const selectedBus = buses.length > 0 ? buses[0] : { id: 'BUS-001', plate: 'B 1234 CD' };
-            const selectedDriver = drivers.length > 0 ? drivers[0] : { id: 'DRIVER-001', name: 'Driver Default' };
-            
-            // Format waktu: jika ada date, gunakan date + waktu default (09:00), jika tidak gunakan waktu sekarang + 1 jam
-            let scheduleTime;
-            if (date) {
-              scheduleTime = `${date}T09:00`;
-            } else {
-              const now = new Date();
-              now.setHours(now.getHours() + 1);
-              scheduleTime = now.toISOString().slice(0, 16); // format: YYYY-MM-DDTHH:mm
-            }
-            
-            const scheduleData = {
-              routeId: route.id || scheduleId,
-              routeName: route.routeName || route.route_name || scheduleLabel || 'Rute',
-              busId: selectedBus.id,
-              busPlate: selectedBus.plate,
-              driverId: selectedDriver.id,
-              driverName: selectedDriver.name,
-              time: scheduleTime,
-              ticketId: res.data.data.id // simpan ticket id sebagai referensi
-            };
-            
-            await createSchedule(scheduleData);
-            onNotify?.('success', 'Pembayaran berhasil dan jadwal telah ditambahkan');
-          } catch (scheduleError) {
-            console.error('Error creating schedule:', scheduleError);
-            // Tetap tampilkan sukses karena pembayaran sudah berhasil
-            onNotify?.('success', 'Pembayaran berhasil (jadwal gagal ditambahkan)');
-          }
-        } else {
-          onNotify?.('success', 'Pembayaran berhasil');
-        }
+        // Catatan: Schedule TIDAK dibuat saat pembelian tiket
+        // Schedule sudah ada di database (seperti jadwal penerbangan pesawat)
+        // User hanya membeli tiket untuk schedule yang sudah ada
+        // Jadwal yang sedang beroperasi tidak bertambah ketika user membeli tiket
         
+        onNotify?.('success', 'Pembayaran berhasil! Tiket Anda telah ditambahkan ke jadwal aktif.');
         onClose?.();
       } else {
-        onNotify?.('error', res.data?.message || 'Gagal membuat tiket');
+        onNotify?.('error', ticketRes?.message || 'Gagal membuat tiket');
       }
     } catch (err) {
-      onNotify?.('error', err?.response?.data?.message || err?.message || 'Gagal membuat tiket');
+      const errorMessage = err?.response?.data?.message || err?.message || 'Gagal membuat tiket';
+      // Handle khusus untuk error validasi user
+      if (err?.response?.status === 404 && errorMessage.includes('tidak ditemukan')) {
+        onNotify?.('error', 'User tidak ditemukan. Silakan login kembali.');
+      } else if (err?.response?.status === 503) {
+        onNotify?.('error', 'Service tidak tersedia. Silakan coba lagi nanti.');
+      } else {
+        onNotify?.('error', errorMessage);
+      }
     } finally {
       setSubmitting(false);
     }

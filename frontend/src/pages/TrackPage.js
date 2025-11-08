@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -8,6 +8,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { getTrackingData } from "../services/apiService";
 
 const pulseStyle = `
   .bus-marker {
@@ -50,69 +51,19 @@ const BusIcon = new L.DivIcon({
   iconAnchor: [24, 24],
 });
 
-// Fungsi untuk posisi acak di antara dua titik
-function randomPositionBetween(start, end, factor) {
-  return [
-    start[0] + (end[0] - start[0]) * factor,
-    start[1] + (end[1] - start[1]) * factor,
-  ];
+// Helper function untuk mendapatkan koordinat dari stops
+function getRouteCoordinates(stops) {
+  if (!stops || stops.length === 0) return [];
+  return stops.map(stop => [stop.latitude, stop.longitude]);
 }
 
-// Data rute antar kota
-const routes = [
-  {
-    id: 1,
-    from: "Jakarta",
-    to: "Bandung",
-    start: [-6.2, 106.816],
-    end: [-6.9175, 107.6191],
-  },
-  {
-    id: 2,
-    from: "Surabaya",
-    to: "Malang",
-    start: [-7.2504, 112.7688],
-    end: [-7.9666, 112.6326],
-  },
-  {
-    id: 3,
-    from: "Semarang",
-    to: "Yogyakarta",
-    start: [-6.9667, 110.4167],
-    end: [-7.7956, 110.3695],
-  },
-];
-
-// Data bus statis di rute
-const dummyBuses = [
-  {
-    id: 1,
-    name: "Bus 01",
-    plate: "B 1234 CD",
-    driver: "Ahmad Yusuf",
-    contact: "0812-3456-7890",
-    route: routes[0],
-    position: randomPositionBetween(routes[0].start, routes[0].end, 0.3),
-  },
-  {
-    id: 2,
-    name: "Bus 02",
-    plate: "L 5678 EF",
-    driver: "Budi Setiawan",
-    contact: "0813-6543-2190",
-    route: routes[1],
-    position: randomPositionBetween(routes[1].start, routes[1].end, 0.6),
-  },
-  {
-    id: 3,
-    name: "Bus 03",
-    plate: "H 9123 GH",
-    driver: "Siti Nurhaliza",
-    contact: "0812-9988-1122",
-    route: routes[2],
-    position: randomPositionBetween(routes[2].start, routes[2].end, 0.4),
-  },
-];
+// Helper function untuk mendapatkan nama route dari stops
+function getRouteName(stops) {
+  if (!stops || stops.length < 2) return '-';
+  const firstStop = stops[0].stopName || stops[0].stop_name || 'Unknown';
+  const lastStop = stops[stops.length - 1].stopName || stops[stops.length - 1].stop_name || 'Unknown';
+  return `${firstStop} → ${lastStop}`;
+}
 
 const FlyToBus = ({ position }) => {
   const map = useMap();
@@ -122,14 +73,72 @@ const FlyToBus = ({ position }) => {
 
 const TrackingPage = () => {
   const [selectedBus, setSelectedBus] = useState(null);
+  const [buses, setBuses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchTrackingData = async () => {
+    try {
+      setLoading(true);
+      const response = await getTrackingData();
+      if (response.success && response.data) {
+        setBuses(response.data);
+        setError(null);
+      } else {
+        setBuses([]);
+      }
+    } catch (err) {
+      console.error('Error fetching tracking data:', err);
+      setError('Gagal memuat data tracking');
+      setBuses([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Hanya fetch sekali saat component mount
+    fetchTrackingData();
+  }, []);
+
+  // Calculate center dari semua bus positions
+  const getMapCenter = () => {
+    if (buses.length === 0) return [-7.0, 110.0];
+    const positions = buses.filter(b => b.position).map(b => b.position);
+    if (positions.length === 0) return [-7.0, 110.0];
+    const avgLat = positions.reduce((sum, p) => sum + p[0], 0) / positions.length;
+    const avgLng = positions.reduce((sum, p) => sum + p[1], 0) / positions.length;
+    return [avgLat, avgLng];
+  };
+
+  if (loading) {
+    return (
+      <div className="relative h-[calc(100vh-64px)] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-textSecondary">Memuat data tracking...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="relative h-[calc(100vh-64px)] flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-[calc(100vh-64px)]">
       <style>{pulseStyle}</style>
 
       <MapContainer
-        center={[-7.0, 110.0]}
-        zoom={6.5}
+        center={getMapCenter()}
+        zoom={buses.length > 0 ? 8 : 6.5}
         scrollWheelZoom={true}
         className="absolute inset-0 z-0"
       >
@@ -138,41 +147,56 @@ const TrackingPage = () => {
           attribution="&copy; OpenStreetMap contributors"
         />
 
-        {/* Garis antar kota */}
-        {routes.map((r) => (
-          <Polyline
-            key={r.id}
-            positions={[r.start, r.end]}
-            color="#008DA6"
-            weight={4}
-            opacity={0.7}
-          />
-        ))}
+        {/* Garis route dari stops */}
+        {buses
+          .filter(bus => bus.route && bus.route.stops && bus.route.stops.length >= 2)
+          .map((bus) => {
+            const coordinates = getRouteCoordinates(bus.route.stops);
+            return (
+              <Polyline
+                key={`route-${bus.busId}`}
+                positions={coordinates}
+                color="#008DA6"
+                weight={3}
+                opacity={0.6}
+              />
+            );
+          })}
 
         {/* Bus marker */}
-        {dummyBuses.map((bus) => (
-          <Marker
-            key={bus.id}
-            position={bus.position}
-            icon={BusIcon}
-            eventHandlers={{
-              click: () => setSelectedBus(bus),
-            }}
-          />
-        ))}
+        {buses
+          .filter(bus => bus.position)
+          .map((bus) => (
+            <Marker
+              key={bus.busId}
+              position={bus.position}
+              icon={BusIcon}
+              eventHandlers={{
+                click: () => setSelectedBus(bus),
+              }}
+            />
+          ))}
 
-        {selectedBus && <FlyToBus position={selectedBus.position} />}
+        {selectedBus && selectedBus.position && <FlyToBus position={selectedBus.position} />}
       </MapContainer>
 
       <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[50] w-[90%] max-w-4xl">
         <div className="bg-white/90 backdrop-blur-sm border border-gray-100 shadow-md rounded-2xl p-8 text-center transition-all duration-300 hover:shadow-lg">
-          <h1 className="text-3xl font-bold text-text tracking-tight">
-            Tracking Bus Antar Kota
-          </h1>
-          <p className="text-textSecondary mt-2 text-base">
-            Lihat posisi bus antar kota secara real-time. Klik ikon di peta
-            untuk melihat detail bus.
-          </p>
+          <div className="flex items-center justify-between">
+            <div className="flex-1 text-left">
+              <h1 className="text-3xl font-bold text-text tracking-tight">
+                Tracking Bus
+              </h1>
+              <p className="text-textSecondary mt-2 text-base">
+                Lihat posisi bus. Klik ikon di peta untuk melihat detail bus.
+              </p>
+              {buses.length > 0 && (
+                <p className="text-textSecondary mt-1 text-sm">
+                  {buses.length} bus sedang beroperasi
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -181,7 +205,7 @@ const TrackingPage = () => {
           <div className="bg-white/95 backdrop-blur-sm border border-gray-100 shadow-lg rounded-2xl p-6 animate-fadeIn transform transition-all duration-300 hover:shadow-xl">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-2xl font-bold text-text">
-                {selectedBus.name}
+                {selectedBus.bus}
               </h2>
               <button
                 onClick={() => setSelectedBus(null)}
@@ -193,19 +217,44 @@ const TrackingPage = () => {
 
             <div className="border-t border-gray-200 mb-3"></div>
 
-            <div className="space-y-1 text-base text-textSecondary leading-relaxed">
+            <div className="space-y-2 text-base text-textSecondary leading-relaxed">
               <p>
-                <strong>Plat:</strong> {selectedBus.plate}
+                <strong>Model:</strong> {selectedBus.model}
               </p>
               <p>
-                <strong>Rute:</strong> {selectedBus.route.from} →{" "}
-                {selectedBus.route.to}
+                <strong>Kapasitas:</strong> {selectedBus.capacity} penumpang
               </p>
+              {selectedBus.route && (
+                <p>
+                  <strong>Rute:</strong> {selectedBus.route.routeName || getRouteName(selectedBus.route.stops)}
+                </p>
+              )}
+              {selectedBus.route && selectedBus.route.routeCode && (
+                <p>
+                  <strong>Kode Rute:</strong> {selectedBus.route.routeCode}
+                </p>
+              )}
+              {selectedBus.driver && (
+                <>
+                  <p>
+                    <strong>Supir:</strong> {selectedBus.driver.name}
+                  </p>
+                  {selectedBus.driver.contact && (
+                    <p>
+                      <strong>Kontak:</strong> {selectedBus.driver.contact}
+                    </p>
+                  )}
+                </>
+              )}
+              {selectedBus.schedule && (
+                <p>
+                  <strong>Jadwal:</strong> {new Date(selectedBus.schedule.time).toLocaleString('id-ID')}
+                </p>
+              )}
               <p>
-                <strong>Supir:</strong> {selectedBus.driver}
-              </p>
-              <p>
-                <strong>Kontak:</strong> {selectedBus.contact}
+                <strong>Status:</strong> <span className={`font-semibold ${selectedBus.status === 'Beroperasi' ? 'text-green-600' : 'text-orange-600'}`}>
+                  {selectedBus.status}
+                </span>
               </p>
             </div>
           </div>

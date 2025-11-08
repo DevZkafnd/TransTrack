@@ -58,7 +58,7 @@ const TicketingPage = () => {
   const [date, setDate] = useState('');
   const [selectedSchedule, setSelectedSchedule] = useState('');
   const [selectedScheduleLabel, setSelectedScheduleLabel] = useState('');
-  const [selectedRoute, setSelectedRoute] = useState(null); // Menyimpan data route lengkap
+  const [selectedRoute, setSelectedRoute] = useState(null); // Menyimpan data schedule lengkap (dari database)
   const [schedules, setSchedules] = useState([]);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
   const [scheduleMsg, setScheduleMsg] = useState('');
@@ -85,20 +85,21 @@ const TicketingPage = () => {
       setLoadingSchedules(true);
       setScheduleMsg('');
       const list = await searchSchedules(query.trim());
-      // Simpan list routes lengkap untuk referensi
-      const routesList = Array.isArray(list) ? list : [];
-      const opts = [{ value: '', label: '-- pilih jadwal --', route: null }].concat(
-        routesList.map((r, idx) => ({
-          value: r.id || String(idx + 1), // gunakan route id jika ada
-          label: `${r.route_name || r.routeName || 'Rute'}${date ? ' • ' + date : ''}`,
-          route: r // simpan data route lengkap
+      // Simpan list schedules lengkap untuk referensi
+      // Schedule sudah ada di database (seperti jadwal penerbangan)
+      const schedulesList = Array.isArray(list) ? list : [];
+      const opts = [{ value: '', label: '-- pilih jadwal --', schedule: null }].concat(
+        schedulesList.map((s) => ({
+          value: s.id, // gunakan schedule id dari database
+          label: `${s.routeName || s.route_name || 'Rute'} - ${s.busPlate || s.bus || 'Bus'} - ${s.driverName || s.driver || 'Driver'}`,
+          schedule: s // simpan data schedule lengkap
         }))
       );
       setSchedules(opts);
       if (opts.length > 1) {
         setSelectedSchedule(opts[1].value);
         setSelectedScheduleLabel(opts[1].label);
-        setSelectedRoute(opts[1].route); // simpan route yang dipilih
+        setSelectedRoute(opts[1].schedule); // simpan schedule yang dipilih (dari database)
         setScheduleMsg(`Ditemukan ${opts.length - 1} jadwal.`);
         notify('success', `Berhasil menemukan ${opts.length - 1} jadwal`);
       } else {
@@ -112,7 +113,7 @@ const TicketingPage = () => {
       const msg = e?.message || 'Gagal mencari jadwal';
       setScheduleMsg(msg);
       notify('error', msg);
-      setSchedules([{ value: '', label: '-- pilih jadwal --', route: null }]);
+      setSchedules([{ value: '', label: '-- pilih jadwal --', schedule: null }]);
       setSelectedSchedule('');
       setSelectedRoute(null);
     } finally {
@@ -211,7 +212,7 @@ const TicketingPage = () => {
                   setSelectedSchedule(v);
                   const found = schedules.find(s => s.value === v);
                   setSelectedScheduleLabel(found?.label || '');
-                  setSelectedRoute(found?.route || null); // update route yang dipilih
+                  setSelectedRoute(found?.schedule || null); // update schedule yang dipilih (dari database)
                 }}
                 options={schedules.length ? schedules : [{ value: '', label: '-- pilih jadwal --' }]}
               />

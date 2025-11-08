@@ -64,10 +64,16 @@ Proyek ini menggunakan **arsitektur microservice** dengan setiap service sebagai
 │  │  ┌──────────────────────────────────────────────┐   │    │
 │  │  │          maintenance                         │   │    │
 │  │  └──────────────────────────────────────────────┘   │    │
+│  │  ┌──────────────────────────────────────────────┐   │    │
+│  │  │          schedules                          │   │    │
+│  │  └──────────────────────────────────────────────┘   │    │
 │  └───────────────────────────────────────────────────────┘    │
 │                                                               │
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │         MaintenanceService  :3003                      │  │
+│  └───────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │         ScheduleService  :3005                         │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                               │
 └─────────────────────────────────────────────────────────────┘
@@ -90,7 +96,7 @@ git clone https://github.com/DevZkafnd/TransTrack.git
 cd TransTrack
 ```
 
-2) Jalankan semua service + frontend (auto install deps + migrate TicketService):
+2) Jalankan semua service + frontend (auto install deps + migrate semua service):
 
 ```bash
 npm run dev
@@ -99,27 +105,35 @@ npm run dev
 3) Buka aplikasi dan dokumentasi:
 
 - Frontend (React): `http://localhost:4000`
+- **GatewayService Swagger**: `http://localhost:8000/api-docs` (Entry point tunggal)
 - RouteService Swagger: `http://localhost:3000/api-docs`
 - DriverService Swagger: `http://localhost:3001/api-docs`
 - UserService Swagger: `http://localhost:3002/api-docs`
 - MaintenanceService Swagger: `http://localhost:3003/api-docs`
 - TicketService Swagger: `http://localhost:3004/api-docs`
+- ScheduleService Swagger: `http://localhost:3005/api-docs`
 
 4) Variabel lingkungan (.env) per service
 
 - Salin `env.example` → `.env` di setiap folder service dalam `backend/*service/` lalu sesuaikan koneksi PostgreSQL.
-- Untuk frontend, Anda tidak wajib mengubah `.env` saat pengembangan: klien otomatis menggunakan UserService lokal di `http://localhost:3002/api` jika API gateway tidak tersedia.
+- Untuk frontend, Anda tidak wajib mengubah `.env` saat pengembangan: klien otomatis menggunakan GatewayService di `http://localhost:8000/api` (default).
+- GatewayService mengkonfigurasi URL semua service melalui environment variables (lihat `backend/gatewayservice/env.example`).
 
 5) Login/Daftar & Pembelian Tiket
 
-- Gunakan modal login/daftar dari frontend (menyambung ke `UserService`).
-- Halaman pembelian tiket ada di `/ticket`. Saat “Bayar Sekarang”, sistem membuat tiket di database (TicketService) dan menandainya success.
+- Gunakan modal login/daftar dari frontend (menyambung ke `UserService` via GatewayService).
+- Halaman pembelian tiket ada di `/ticket`. Saat "Bayar Sekarang":
+  - Frontend mengirim request ke GatewayService
+  - GatewayService meneruskan ke TicketService
+  - **TicketService memvalidasi user dengan memanggil UserService** (inter-service communication)
+  - Jika user valid, tiket dibuat dan ditandai success
 
 6) Troubleshooting umum
 
 - Port bentrok → hentikan proses lama (Windows PowerShell: `netstat -ano | findstr :<PORT>` lalu kill PID) atau ubah `PORT` di `.env` service terkait.
 - Connection refused ke API → pastikan service tujuan up (cek `/health`) dan base URL frontend sesuai (frontend fallback otomatis ke 3002 untuk user saat dev).
-- Tabel TicketService hilang → jalankan ulang `npm run dev` (script `predev` akan menjalankan migrasi TicketService otomatis).
+- Tabel database hilang → jalankan ulang `npm run dev` (script `predev` akan menjalankan migrasi semua service otomatis).
+- Atau jalankan `npm run setup` untuk install dependencies + migrasi semua service.
 
 7) Repository
 
@@ -131,10 +145,13 @@ npm run dev
 
 | Service | Port | 🎯 Tugas | 📖 Dokumentasi | 🔗 Health Check |
 |---------|------|----------|----------------|-----------------|
+| **GatewayService** | `8000` | API Gateway - Entry point tunggal untuk frontend | [`/api-docs`](http://localhost:8000/api-docs) | [`/health`](http://localhost:8000/health) |
 | **RouteService** | `3000` | Mengelola data master rute dan halte | [`/api-docs`](http://localhost:3000/api-docs) | [`/health`](http://localhost:3000/health) |
 | **DriverService** | `3001` | Mengelola data master pengemudi | [`/api-docs`](http://localhost:3001/api-docs) | [`/health`](http://localhost:3001/health) |
 | **UserService** | `3002` | Mengelola data master pengguna/penumpang | [`/api-docs`](http://localhost:3002/api-docs) | [`/health`](http://localhost:3002/health) |
 | **MaintenanceService** | `3003` | Mengelola data master riwayat dan jadwal perbaikan bus | [`/api-docs`](http://localhost:3003/api-docs) | [`/health`](http://localhost:3003/health) |
+| **TicketService** | `3004` | Mengelola pembelian dan validasi tiket | [`/api-docs`](http://localhost:3004/api-docs) | [`/health`](http://localhost:3004/health) |
+| **ScheduleService** | `3005` | Mengelola data jadwal perjalanan bus | [`/api-docs`](http://localhost:3005/api-docs) | [`/health`](http://localhost:3005/health) |
 
 ---
 
@@ -194,6 +211,31 @@ TransTrack/
 │   │   └── 📄 20251105004443_initial_schema.js
 │   ├── 📂 routes/
 │   │   └── 📄 maintenance.js         # Endpoint untuk maintenance
+│   ├── 📂 scripts/
+│   │   ├── 📄 migrate.js
+│   │   └── 📄 setup-database.js
+│   ├── 📄 server.js
+│   ├── 📄 package.json
+│   ├── 📄 env.example
+│   └── 📄 README.md
+│
+│   ├── 📂 ticketservice/                # TicketService (Port 3004)
+│   ├── 📂 config/
+│   ├── 📂 routes/
+│   │   └── 📄 tickets.js              # Endpoint untuk tickets
+│   ├── 📂 scripts/
+│   │   └── 📄 migrate.js
+│   ├── 📄 server.js
+│   ├── 📄 package.json
+│   ├── 📄 env.example
+│   └── 📄 README.md
+│
+│   ├── 📂 scheduleservice/              # ScheduleService (Port 3005)
+│   ├── 📂 config/
+│   ├── 📂 migrations/
+│   │   └── 📄 20251105120000_initial_schema.js
+│   ├── 📂 routes/
+│   │   └── 📄 schedules.js            # Endpoint untuk schedules
 │   ├── 📂 scripts/
 │   │   ├── 📄 migrate.js
 │   │   └── 📄 setup-database.js
@@ -467,6 +509,20 @@ CREATE TABLE maintenance (
 **🔗 Links:**
 - 📖 Swagger: `http://localhost:3003/api-docs`
 - ❤️ Health: `http://localhost:3003/health`
+
+### 📅 ScheduleService (Port 3005)
+
+| Method | Endpoint | Deskripsi |
+|--------|----------|-----------|
+| `GET` | `/api/schedules` | Mendapatkan semua jadwal |
+| `GET` | `/api/schedules/:id` | Mendapatkan jadwal berdasarkan ID |
+| `POST` | `/api/schedules` | Membuat jadwal baru |
+| `PUT` | `/api/schedules/:id` | Update seluruh data jadwal |
+| `DELETE` | `/api/schedules/:id` | Menghapus jadwal |
+
+**🔗 Links:**
+- 📖 Swagger: `http://localhost:3005/api-docs`
+- ❤️ Health: `http://localhost:3005/health`
 
 ---
 

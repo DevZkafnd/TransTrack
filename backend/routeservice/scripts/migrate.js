@@ -23,15 +23,52 @@ const schema = process.env.DB_SCHEMA || 'public';
 
 console.log('🚀 Running migration with schema:', schema);
 console.log('📋 DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+console.log('ℹ️  Catatan: Peringatan "Can\'t determine timestamp" adalah normal dan tidak mempengaruhi migrasi.\n');
 
 try {
-  execSync(
+  // Capture output and filter warnings
+  const output = execSync(
     `node -r dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate.js up --config ./config/migration.config.js --schema ${schema}`,
-    { stdio: 'inherit', cwd: require('path').resolve(__dirname, '..') }
+    { 
+      encoding: 'utf8',
+      cwd: require('path').resolve(__dirname, '..'),
+      stdio: ['inherit', 'pipe', 'pipe']
+    }
   );
-  console.log('✅ Migration completed successfully!');
+  
+  // Filter out "Can't determine timestamp" warnings
+  const lines = output.split('\n');
+  const filteredLines = lines.filter(line => 
+    !line.includes("Can't determine timestamp")
+  );
+  
+  // Show important output
+  filteredLines.forEach(line => {
+    if (line.trim() && (
+      line.includes('Migrating') || 
+      line.includes('MIGRATION') || 
+      line.includes('Migrations complete') ||
+      line.includes('No migrations to run') ||
+      line.includes('Error') ||
+      line.includes('❌')
+    )) {
+      console.log(line);
+    }
+  });
+  
+  console.log('\n✅ Migration completed successfully!');
 } catch (error) {
-  console.error('❌ Migration failed:', error.message);
-  process.exit(1);
+  // Check if it's actually an error or just warnings
+  const errorOutput = error.stdout?.toString() || error.stderr?.toString() || error.message;
+  
+  if (errorOutput.includes('Migrations complete') || errorOutput.includes('No migrations to run')) {
+    console.log('\n✅ Migration completed successfully!');
+    console.log('ℹ️  Semua migrasi sudah dijalankan sebelumnya.');
+  } else {
+    console.error('\n❌ Migration failed:', error.message);
+    if (error.stdout) console.error('Output:', error.stdout.toString());
+    if (error.stderr) console.error('Error:', error.stderr.toString());
+    process.exit(1);
+  }
 }
 

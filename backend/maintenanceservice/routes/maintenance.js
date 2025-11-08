@@ -230,9 +230,49 @@ router.post('/', async (req, res) => {
 router.get('/bus/:bus_id', async (req, res) => {
   try {
     const { bus_id } = req.params;
-    const { status, limit = 100, offset = 0 } = req.query;
-    const limitNum = Number(limit);
-    const offsetNum = Number(offset);
+    let { status, limit, offset } = req.query;
+    
+    // Validasi dan pastikan limit dan offset adalah angka yang valid
+    // Handle kasus: undefined, null, string kosong, atau nilai tidak valid
+    let finalLimitNum = 100; // default
+    let finalOffsetNum = 0; // default
+    
+    if (limit !== undefined && limit !== null && limit !== '') {
+      const limitParsed = Number(limit);
+      if (!isNaN(limitParsed) && limitParsed > 0) {
+        finalLimitNum = Math.floor(limitParsed); // Pastikan integer
+      }
+    }
+    
+    if (offset !== undefined && offset !== null && offset !== '') {
+      const offsetParsed = Number(offset);
+      if (!isNaN(offsetParsed) && offsetParsed >= 0) {
+        finalOffsetNum = Math.floor(offsetParsed); // Pastikan integer
+      }
+    }
+
+    // Handle status yang mungkin array atau JSON string
+    if (status) {
+      if (Array.isArray(status)) {
+        status = status[0]; // Ambil elemen pertama
+      } else if (typeof status === 'string') {
+        // Cek jika string adalah JSON array
+        try {
+          const parsed = JSON.parse(status);
+          if (Array.isArray(parsed)) {
+            status = parsed[0]; // Ambil elemen pertama
+          }
+        } catch (e) {
+          // Bukan JSON, gunakan string langsung
+        }
+      }
+      // Pastikan status adalah string yang valid
+      if (typeof status !== 'string' || status.trim().length === 0) {
+        status = null;
+      } else {
+        status = status.trim();
+      }
+    }
 
     const params = [bus_id];
     let whereClause = 'WHERE bus_id = $1';
@@ -262,7 +302,7 @@ router.get('/bus/:bus_id', async (req, res) => {
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
 
-    params.push(limitNum, offsetNum);
+    params.push(finalLimitNum, finalOffsetNum);
 
     const countSql = `
       SELECT COUNT(*)::int AS cnt 
@@ -279,8 +319,8 @@ router.get('/bus/:bus_id', async (req, res) => {
       success: true,
       data: listResult.rows,
       total: countResult.rows[0].cnt,
-      limit: limitNum,
-      offset: offsetNum,
+      limit: finalLimitNum,
+      offset: finalOffsetNum,
     });
   } catch (error) {
     console.error('Kesalahan saat mengambil riwayat perbaikan:', error);

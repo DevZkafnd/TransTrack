@@ -5,9 +5,18 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
+    "dev": "node scripts/dev.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "migrate": "node scripts/migrate.js"
+    "setup": "node scripts/setup-database.js",
+    "setup:full": "node scripts/setup.js",
+    "migrate": "node scripts/migrate.js",
+    "verify": "node scripts/verify-migrations.js",
+    "assign-buses": "node scripts/assign-buses-to-routes.js",
+    "assign-buses-manual": "node scripts/assign-buses-manual.js",
+    "sync-bus": "node scripts/sync-bus-from-schedule.js",
+    "auto-assign": "node scripts/auto-assign-from-schedule.js",
+    "check-routes": "node scripts/check-routes-status.js",
+    "check-services": "node scripts/check-services.js"
   },
   "keywords": [
     "express",
@@ -20,6 +29,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "axios": "^1.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
