@@ -12,17 +12,20 @@
 
 ## Overview
 
-**Lacak Bus** adalah fitur yang memungkinkan pengguna untuk melihat posisi bus di peta interaktif dan animasinya bergerak mengikuti jalur jalan (polyline yang di-route-kan). Fitur ini menampilkan:
+**Lacak Bus** adalah fitur yang memungkinkan pengguna untuk melihat posisi real-time bus di peta interaktif. Fitur ini menampilkan:
 - Posisi bus di peta menggunakan koordinat GPS
 - Rute bus dengan garis polyline yang menghubungkan halte-halte
 - Detail bus (model, kapasitas, supir, jadwal, status)
-- Estimasi durasi perjalanan (dari database ScheduleService) dan ETA
 - Informasi lengkap tentang rute dan halte
+ - Estimasi durasi/ETA per bus dari database (fallback OSRM)
+ - Pergerakan bus mengikuti jalan dan looping bolak‑balik di sepanjang rute
+ - Popup kecil menampilkan pergerakan rata‑rata (km/jam)
 
 **Lokasi File:**
 - Frontend: `frontend/src/pages/TrackPage.js`
 - API Service: `frontend/src/services/apiService.js`
 - Gateway Endpoint: `backend/gatewayservice/routes/gateway.js`
+ - ScheduleService: `backend/scheduleservice/migrations/20251110091000_add_estimated_duration_minutes.js`, `backend/scheduleservice/routes/schedules.js`
 
 ---
 
@@ -59,7 +62,7 @@ Fitur **Lacak Bus** menggunakan arsitektur microservices dengan **lebih dari 2 l
 
 ### 2. Komunikasi Dinamis Antar Layanan
 
-**API Gateway** melakukan komunikasi dinamis ke **5 layanan berbeda** dan mengagregasi field `schedule.estimatedDurationMinutes`:
+**API Gateway** melakukan komunikasi dinamis ke **5 layanan** dan meneruskan `schedule.estimatedDurationMinutes`:
 
 #### Langkah 1: Ambil Data Bus dari BusService
 ```javascript
@@ -91,7 +94,7 @@ GET http://localhost:3005/api/schedules?limit=1000
 ```
 - **Service**: ScheduleService (Port 3005)
 - **Method**: GET
-- **Response**: Daftar schedule dengan `busId`, `routeId`, `time`, `driverId`
+- **Response**: Daftar schedule dengan `busId`, `routeId`, `time`, `driverId`, `estimatedDurationMinutes`
 
 #### Langkah 5: Ambil Data Maintenance dari MaintenanceService
 ```javascript
@@ -114,13 +117,13 @@ Gateway melakukan **data aggregation** dengan langkah-langkah berikut:
 3. **Menghitung posisi bus** berdasarkan schedule dan route stops
 4. **Menentukan status** bus (Beroperasi/Maintenance) berdasarkan maintenance data
 5. **Mengembalikan response** yang sudah di-aggregate ke frontend
+6. Menyertakan `schedule.estimatedDurationMinutes` agar frontend dapat menghitung ETA
 
 ### 4. Integrasi Lancar
 
 - **Error Handling**: Jika salah satu service tidak tersedia, Gateway tetap mengembalikan data dari service yang tersedia
 - **Timeout**: Setiap request memiliki timeout 5 detik untuk mencegah blocking
 - **Fallback**: Jika service tidak tersedia, data tetap ditampilkan dengan informasi yang tersedia
-- **OSRM Rate Limiting**: Frontend memakai antrean, retry, dan cache untuk menghindari 429 saat meminta rute ke `router.project-osrm.org`
 
 ---
 
@@ -133,37 +136,40 @@ Gateway melakukan **data aggregation** dengan langkah-langkah berikut:
 - Tile layer dari OpenStreetMap
 - Responsive dan dapat di-zoom
 
-✅ **Menampilkan Posisi & Ikon Bus**
-- Marker bus dengan ikon SVG khusus
-- Ikon menghadap kanan (orientasi seragam)
-- Posisi bus dihitung dan dianimasikan di atas polyline rute
+✅ **Menampilkan Posisi Bus**
+- Marker bus dengan icon custom
+- Ikon disetel anchor dan transform-origin ke center agar tepat di polyline
+- Posisi bus dihitung dari progress waktu terhadap durasi estimasi (ETA)
 
 ✅ **Menampilkan Rute Bus**
-- Polyline mengikuti jalan (hasil OSRM) dengan cache per-koordinat
-- Fallback ke garis antar-halte bila OSRM gagal
+- Polyline mengikuti jalan (OSRM overview=simplified), fallback ke garis lurus saat 429
+- Warna biru (#008DA6) dengan opacity 0.6
+- Hanya menampilkan route yang memiliki minimal 2 stops
+- Rate limiter + queue + retry/backoff + cache untuk permintaan OSRM
 
-✅ **Detail Bus (Info Panel Besar)**
+✅ **Detail Bus (Info Panel)**
 - Model bus
 - Kapasitas penumpang
 - Nama rute
 - Kode rute
 - Nama supir
 - Kontak supir
-- Jadwal terbaru, Durasi Estimasi (menit), ETA, Sisa Waktu, Sumber Estimasi (DB/OSRM)
+- Jadwal + Durasi Estimasi + ETA + Sisa Waktu + Sumber estimasi (DB/OSRM)
 - Status operasi
 
 ✅ **Interaksi User**
-- Klik marker menampilkan popup kecil berisi “Pergerakan: X km/jam”
-- Klik marker juga membuka panel besar dengan detail lengkap
+- Klik marker untuk melihat detail bus
 - Auto-fly ke posisi bus saat dipilih
+- Tutup info panel
+- Popup kecil marker menampilkan “Pergerakan: X km/jam”
+- Animasi bergerak bolak‑balik (ping‑pong) dari halte awal ke akhir lalu kembali
 
 ### 2. Stabilitas dan Kecepatan
 
 - **Lazy Loading**: Data hanya di-fetch sekali saat component mount
 - **Error Handling**: Menampilkan pesan error yang user-friendly jika gagal load data
 - **Loading State**: Menampilkan loading indicator saat fetch data
-- **Optimized Rendering**: Hanya render marker dan polyline yang memiliki data valid
-- **Antrean OSRM + Retry**: batasi concurrency, gunakan backoff, dan cache path
+- **Optimized Rendering**: Cache rute OSRM per-koordinat, limit request paralel OSRM, hanya render data valid
 
 ### 3. Tanpa Error
 
@@ -182,16 +188,6 @@ Frontend berhasil memanggil API Gateway dan menampilkan data dari **5 layanan**:
 
 ---
 
-## Perubahan Terbaru (November 2025)
-
-- Integrasi `estimated_duration_minutes` dari ScheduleService + fallback durasi OSRM
-- ETA dan Sisa Waktu dihitung di frontend dan tampil di panel besar
-- Ikon bus distabilkan (anchor center) dan diseragamkan menghadap kanan
-- Antrian & retry OSRM untuk mencegah 429, plus cache path
-- Animasi “ping‑pong” di sepanjang rute: berangkat dari halte awal ke akhir lalu kembali
-
----
-
 ## Dokumentasi API (Swagger)
 
 ### 1. Endpoint yang Didokumentasikan
@@ -200,7 +196,7 @@ Frontend berhasil memanggil API Gateway dan menampilkan data dari **5 layanan**:
 
 **Swagger Documentation** tersedia di:
 ```
-http://localhost:3007/api-docs
+http://localhost:8000/api-docs
 ```
 
 ### 2. Detail Endpoint
@@ -208,7 +204,7 @@ http://localhost:3007/api-docs
 #### Request
 ```http
 GET /api/dashboard/tracking
-Host: localhost:3007
+Host: localhost:8000
 Content-Type: application/json
 ```
 
@@ -270,12 +266,12 @@ Content-Type: application/json
 
 **Contoh Request menggunakan cURL:**
 ```bash
-curl -X GET http://localhost:3007/api/dashboard/tracking
+curl -X GET http://localhost:8000/api/dashboard/tracking
 ```
 
 **Contoh Request menggunakan JavaScript (Axios):**
 ```javascript
-const response = await axios.get('http://localhost:3007/api/dashboard/tracking');
+const response = await axios.get('http://localhost:8000/api/dashboard/tracking');
 console.log(response.data);
 ```
 
@@ -292,15 +288,15 @@ Dokumentasi Swagger mencakup:
 
 Swagger UI dapat diakses di:
 ```
-http://localhost:3007/api-docs
+http://localhost:8000/api-docs
 ```
 
-Pastikan GatewayService berjalan di port 3007.
+Pastikan GatewayService berjalan (default 8000).
 
 ### 6. File Spesifikasi
 
-File OpenAPI Specification dapat di-generate dari Swagger UI atau tersedia di:
-- `backend/gatewayservice/config/swagger.js`
+File OpenAPI Specification dapat diakses/di-export dari Swagger UI atau dari konfigurasi:
+- Gateway: `backend/gatewayservice/config/swagger.js`
 
 ---
 
@@ -384,7 +380,7 @@ Frontend → Gateway → BusService (GET /api/buses)
 
 1. **Buka Swagger UI:**
    ```
-   http://localhost:3007/api-docs
+   http://localhost:8000/api-docs
    ```
 
 2. **Pilih Endpoint:**
@@ -405,7 +401,7 @@ Frontend → Gateway → BusService (GET /api/buses)
 
 **Request:**
 ```http
-GET http://localhost:3007/api/dashboard/tracking
+GET http://localhost:8000/api/dashboard/tracking
 ```
 
 **Expected Response:**

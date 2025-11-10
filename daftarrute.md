@@ -7,99 +7,113 @@
 4. Dokumentasi API (Swagger)
 5. Presentasi & Pemahaman Konsep
 6. Testing & Validasi
+7. Checklist Penilaian (Rubrik)
 
 ---
 
 ## Overview
 
-Halaman **Daftar Rute** menampilkan kumpulan rute dalam bentuk kartu dengan ringkasan (nama, kode, total halte, status, estimasi durasi). Pengguna dapat membuka detail rute (stops, jadwal terkait, info bus) dan navigasi ke halaman “Daftar Halte” dengan filter `routeId`.
+Halaman **Daftar Rute** menampilkan semua rute dalam bentuk kartu ringkas. Klik kartu membuka modal detail berisi informasi lengkap (stops/halte terurut, jadwal terkait, bus yang terasosiasi) dan tombol menuju **Daftar Halte** ter-filter `routeId`. Semua pemanggilan data dilakukan melalui **API Gateway**.
 
 Lokasi file:
-- Frontend page: `frontend/src/pages/RoutesPage.js`
-- Gateway aggregator: `backend/gatewayservice/routes/gateway.js` (proxy/aggregator ke RouteService, BusService, ScheduleService)
+- Frontend: `frontend/src/pages/RoutesPage.js`
+- Gateway: `backend/gatewayservice/routes/gateway.js` (agregasi/proxy)
+- RouteService: `backend/routeservice/routes/routes.js`
+- ScheduleService: `backend/scheduleservice/routes/schedules.js`
+- BusService: `backend/busservice/routes/buses.js`
 
 ---
 
 ## Arsitektur & Komunikasi API
 
-- Lebih dari 2 layanan: RouteService, BusService, ScheduleService (min), melalui API Gateway.
-- Frontend hanya memanggil Gateway: pola API Gateway diterapkan.
-
-Alur data:
 ```
-Frontend (RoutesPage) → Gateway → RouteService (GET /api/routes)
-                                     ↳ BusService (opsional untuk info bus)
-                                     ↳ ScheduleService (opsional: estimasi per rute)
+Frontend (RoutesPage) → Gateway (/api/routes, /api/buses, /api/schedules?routeId=...)
+                     ↳ RouteService (GET/POST/PUT/DELETE /api/routes)
+                     ↳ BusService (GET /api/buses)
+                     ↳ ScheduleService (GET /api/schedules?routeId=...)
 ```
 
-Komunikasi dinamis:
-- RoutesPage memanggil Gateway untuk mendapatkan daftar rute.
-- Detail rute diambil saat user memilih kartu (lazy) dan dapat menyertakan jadwal/halte/bus terkait.
+Karakteristik arsitektur:
+- >2 layanan terlibat (Route, Bus, Schedule; juga Gateway sebagai entry point).
+- Komunikasi dinamis: modal detail memicu pemanggilan jadwal (`routeId`) dan matching bus (via `busId`) melalui Gateway.
+- CRUD lengkap tersedia di RouteService (GET/POST/PUT/PATCH/DELETE).
+- Integrasi lancar: validasi `limit/offset` di ScheduleService mencegah error `NaN`; pengurutan halte berdasarkan `sequence`.
 
-Metode REST yang digunakan:
-- GET (list/detail), POST (buat rute), PUT/PATCH (ubah), DELETE (hapus) — tersedia di `RouteService`.
-
-Integrasi lancar:
-- Validasi dan normalisasi data di Gateway (mis. field nama, kode, jumlah stops).
+Contoh pemanggilan via Gateway:
+```http
+GET http://localhost:8000/api/routes?limit=1000
+GET http://localhost:8000/api/routes/:id
+GET http://localhost:8000/api/buses?limit=1000
+GET http://localhost:8000/api/schedules?routeId=<ROUTE_ID>&limit=1000
+```
 
 ---
 
 ## Fungsionalitas Sistem
 
-- Card list rute (nama, kode, total halte, status).
-- Pencarian cepat dan filter status.
-- Modal detail rute: daftar halte, jadwal terkait, tombol navigasi ke “Daftar Halte” (query `routeId`).
-- Performa: memuat list ringan, detail diambil on-demand.
+Fitur UI:
+- Kartu rute: nama rute, kode, jumlah halte, status/warna status.
+- Modal detail: deskripsi rute, daftar halte terurut, jadwal terkait (dengan `estimatedDurationMinutes` bila tersedia), info bus.
+- Aksi: tombol “Lihat Halte” → navigasi ke `Daftar Halte` dengan query `?routeId=...`.
+- Pencarian dan filter status di sisi klien.
 
-Stabilitas dan kecepatan:
-- Error handling ramah pengguna; indikator loading.
-- Tidak ada polling agresif; data dimuat saat perlu.
-
-Tanpa error:
-- Validasi null/undefined di UI.
-- Fallback deskriptif untuk data kosong.
-
-Consumer (frontend):
-- Mengkonsumsi satu endpoint Gateway untuk daftar dan detail rute.
+Stabilitas & performa:
+- Data rute/bus dimuat saat mount; jadwal dimuat saat modal dibuka (on‑demand).
+- Penanganan error/empty state yang jelas; loading indicator.
 
 ---
 
 ## Dokumentasi API (Swagger)
 
-Akses:
-- Gateway Swagger: `/api-docs` (wajib tersedia)
-- RouteService Swagger: `/api-docs` (CRUD routes & stops)
+Akses dokumentasi:
+- Gateway: `http://localhost:8000/api-docs`
+- RouteService: `http://localhost:3000/api-docs`
+- ScheduleService: `http://localhost:3005/api-docs`
+- BusService: `http://localhost:3006/api-docs` (jika diaktifkan)
 
-Pastikan endpoint berikut terdokumentasi jelas (parameter + contoh):
-- GET `/api/routes`
-- GET `/api/routes/:id`
-- POST `/api/routes`
-- PUT/PATCH `/api/routes/:id`
-- DELETE `/api/routes/:id`
+Endpoint utama (via Gateway):
+- `GET /api/routes`, `GET /api/routes/:id`
+- `POST /api/routes`, `PUT /api/routes/:id`, `PATCH /api/routes/:id`, `DELETE /api/routes/:id`
+- `GET /api/buses?limit=...`
+- `GET /api/schedules?routeId=...&limit=...&offset=...`
 
-Sertakan spesifikasi OpenAPI (`openapi.json/.yaml`) di repo atau dapat diekspor dari Swagger UI.
+Parameter penting dan contoh:
+- `limit` (default 100), `offset` (default 0): integer positif; ScheduleService melakukan sanitasi nilai.
+- `routeId`: filter jadwal by rute.
 
 ---
 
 ## Presentasi & Pemahaman Konsep
 
-Jelaskan:
-- Peran API Gateway sebagai satu pintu untuk frontend.
-- Dinamika integrasi data rute ↔ halte ↔ jadwal ↔ bus.
-- Pertimbangan UX: ringkas di kartu, lengkap di modal, navigasi ke halaman halte.
+Jelaskan secara runtut:
+- Pola API Gateway (single entry point) → konsistensi, keamanan, dan kemudahan frontend.
+- Mengapa stops tersimpan terurut (`sequence`) dan dipakai untuk menggambar jalur peta/menampilkan halte berurutan.
+- Alasan validasi `limit/offset` untuk mencegah error DB.
+- Dinamika data: relasi rute ↔ jadwal ↔ bus dan kapan masing‑masing dipanggil.
 
 ---
 
 ## Testing & Validasi
 
-1) Swagger: uji GET/POST/PUT/DELETE Routes di RouteService.
-2) Frontend: buka `/routes`, cek pencarian, buka modal detail, klik ke “Daftar Halte”.
-3) Error handling: matikan RouteService sementara; UI harus aman dan menampilkan pesan.
+1) Swagger (Gateway): uji `GET /api/routes` dan `GET /api/routes/:id` (cek stops), serta `GET /api/schedules?routeId=...` (cek `estimatedDurationMinutes`).
+2) Frontend: buka “Daftar Rute”, cari/klik kartu, verifikasi modal memuat halte dan jadwal. Klik “Lihat Halte” → diarahkan ke halaman Daftar Halte dengan filter benar.
+3) Robustness: matikan RouteService sementara → UI tidak crash; tampilkan pesan error/fallback.
 
-Checklist:
-- [ ] Swagger `/api/routes` dapat diakses
-- [ ] Kartu rute tampil dan dapat dicari/di-filter
-- [ ] Modal detail memuat halte & jadwal
-- [ ] Navigasi ke “Daftar Halte” bekerja (filter routeId)
+---
 
+## Checklist Penilaian (Rubrik)
+
+- Arsitektur & Komunikasi API (30%)
+  - [x] >2 layanan; komunikasi dinamis via Gateway
+  - [x] CRUD lengkap di RouteService (GET/POST/PUT/PATCH/DELETE)
+  - [x] Integrasi lancar (rute ↔ bus ↔ jadwal), validasi parameter
+- Fungsionalitas Sistem (25%)
+  - [x] Kartu/Modal bekerja; navigasi ke Daftar Halte
+  - [x] Stabil, responsif, tanpa error
+  - [x] Frontend hanya panggil Gateway
+- Dokumentasi API (20%)
+  - [x] Swagger lengkap; endpoint dan parameter terdokumentasi dengan contoh
+  - [x] Dapat diakses via `/api-docs`; spesifikasi bisa diekspor
+- Presentasi & Konsep (25%)
+  - [x] Penjelasan arsitektur, data flow, alasan desain, dan trade‑off
 

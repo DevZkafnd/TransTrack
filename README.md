@@ -20,6 +20,7 @@
 - [📦 Services yang Tersedia](#-services-yang-tersedia)
 - [📁 Struktur Proyek](#-struktur-proyek)
 - [🚀 Quick Start](#-quick-start)
+- [🖥️ Frontend Halaman & Fitur](#️-frontend-halaman--fitur)
 - [🔧 Konfigurasi Environment](#-konfigurasi-environment)
 - [📊 Database Schema](#-database-schema)
 - [🌐 API Endpoints Overview](#-api-endpoints-overview)
@@ -39,6 +40,7 @@
 Proyek ini menggunakan **arsitektur microservice** dengan setiap service sebagai penyedia API (Provider) yang independen. Setiap service memiliki:
 
 - ✅ Database PostgreSQL terpisah (migration table terpisah)
+- ✅ Semua komunikasi frontend melewati satu pintu: **API Gateway**
 - ✅ Port yang berbeda untuk menghindari konflik
 - ✅ Dokumentasi API Swagger sendiri
 - ✅ Struktur folder yang konsisten
@@ -154,10 +156,27 @@ npm run dev
 - Tabel database hilang → jalankan migrasi service terkait (`npm run migrate` di folder service).
 - Jika pernah memakai tabel migrasi lama `pgmigrations` generik dan tidak dipakai lagi, Anda boleh menghapusnya: `DROP TABLE IF EXISTS pgmigrations;`
 - OSRM routing 429: frontend sudah memakai antrian + retry + cache; tunggu beberapa detik atau zoom region lain.
+- Error NaN pada ScheduleService (bigint) → parameter `limit`/`offset` wajib integer; service sudah memiliki fallback aman.
 
 8) Repository
 
 - GitHub: `https://github.com/DevZkafnd/TransTrack.git`
+
+---
+
+## 🖥️ Frontend Halaman & Fitur
+
+Semua data diakses melalui API Gateway.
+
+- Daftar Rute (`/routes`) — Kartu ringkas; modal detail berisi halte terurut, jadwal, info bus, dan tombol menuju Daftar Halte terfilter `?routeId=...`. File: `frontend/src/pages/RoutesPage.js`
+- Daftar Halte (`/stops`) — Daftar halte per rute, pencarian, filter `routeId` dari URL. File: `frontend/src/pages/StopsPage.js`
+- Lacak Bus (`/track`) — Peta dengan jalur OSRM mengikuti jalan, rate limiting + retry + cache OSRM, animasi bus ping‑pong, ikon halte kustom, ETA dan speed km/jam. File: `frontend/src/pages/TrackPage.js`
+- Navbar — Tautan halaman termasuk “Daftar Halte”. File: `frontend/src/components/Navbar.js`
+- Favicon — Ikon bus konsisten di tab browser. File: `frontend/public/favicon.svg` ditautkan pada `frontend/public/index.html`.
+
+Catatan OSRM:
+- Parameter `overview=simplified`, `geometries=geojson`, dan antrian request untuk mencegah 429.
+- Cache rute disimpan in‑memory di frontend untuk efisiensi.
 
 ---
 
@@ -596,6 +615,12 @@ Untuk migration berikutnya:
 npm run migrate
 ```
 
+#### Catatan Khusus
+
+- RouteService menggunakan migration table khusus `pgmigrations_routeservice` dan seluruh migrasi dibuat idempotent (aman dijalankan berulang).
+- ScheduleService memiliki migrasi `20251110091000_add_estimated_duration_minutes.js` untuk kolom `estimated_duration_minutes` yang dipakai pada ETA halaman Lacak Bus. Pastikan migrasi ini sudah dijalankan.
+- Bila terdapat konflik urutan timestamp migrasi lama, gunakan migration table per service (bukan `pgmigrations` bersama) dan jalankan ulang migrasi.
+
 ---
 
 ## 🧪 Testing
@@ -738,7 +763,9 @@ Perintah ini mengeksekusi skrip berikut dari `package.json` root:
     "dev:maintenanceservice": "npm --prefix backend/maintenanceservice start",
     "dev:routeservice": "npm --prefix backend/routeservice start",
     "dev:userservice": "npm --prefix backend/userservice start",
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:driverservice\" \"npm run dev:maintenanceservice\" \"npm run dev:routeservice\" \"npm run dev:userservice\""
+    "dev:scheduleservice": "npm --prefix backend/scheduleservice start",
+    "dev:gatewayservice": "npm --prefix backend/gatewayservice start",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:gatewayservice\" \"npm run dev:routeservice\" \"npm run dev:scheduleservice\" \"npm run dev:driverservice\" \"npm run dev:maintenanceservice\" \"npm run dev:userservice\""
   }
 }
 ```
@@ -797,6 +824,9 @@ Setiap service menggunakan port yang berbeda. Pastikan tidak ada konflik port:
 | DriverService | `3001` |
 | UserService | `3002` |
 | MaintenanceService | `3003` |
+| TicketService | `3004` |
+| ScheduleService | `3005` |
+| GatewayService | `8000` |
 
 ### 💾 Database
 

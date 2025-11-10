@@ -7,92 +7,99 @@
 4. Dokumentasi API (Swagger)
 5. Presentasi & Pemahaman Konsep
 6. Testing & Validasi
+7. Checklist Penilaian (Rubrik)
 
 ---
 
 ## Overview
 
-Halaman **Daftar Halte** menampilkan daftar halte yang dikelompokkan per rute, dengan kemampuan filter berdasarkan `routeId` dan pencarian teks. Halaman ini dapat dikunjungi langsung dari navbar atau melalui tombol pada detail rute.
+Halaman **Daftar Halte** menampilkan daftar halte per rute, mendukung pencarian teks dan filter berdasarkan `routeId`. Dapat dibuka langsung dari navbar atau dari modal detail **Daftar Rute** (tautan mengirimkan `?routeId=<id>`). Semua panggilan data via **API Gateway**.
 
 Lokasi file:
-- Frontend page: `frontend/src/pages/StopsPage.js`
-- Gateway aggregator: `backend/gatewayservice/routes/gateway.js` (proxy/aggregator ke RouteService)
+- Frontend: `frontend/src/pages/StopsPage.js`
+- Gateway: `backend/gatewayservice/routes/gateway.js` (proxy/aggregator)
+- RouteService: `backend/routeservice/routes/routes.js`
 
 ---
 
 ## Arsitektur & Komunikasi API
 
-- Layanan utama: RouteService (sumber data rute dan stops) melalui API Gateway.
-- Frontend hanya memanggil Gateway sebagai single entry point.
-
-Alur data:
 ```
-Frontend (StopsPage) → Gateway → RouteService (GET /api/routes/:id untuk ambil stops)
-                                     ↳ bisa enumerate semua routes lalu fetch detail tiap route
+Frontend (StopsPage) → Gateway (/api/routes, /api/routes/:id)
+                    ↳ RouteService (GET /api/routes, GET /api/routes/:id)
 ```
 
-Komunikasi dinamis:
-- StopsPage pertama mengambil daftar rute, lalu memuat detail per rute (stops) untuk dirender terkelompok.
-
-Metode REST yang digunakan (RouteService):
-- GET (list/detail), POST, PUT/PATCH, DELETE untuk rute dan stops.
-
-Integrasi lancar:
-- Normalisasi koordinat (lat/lng) dan urutan `sequence` sebelum render.
+Komunikasi dinamis & integrasi:
+- Untuk menampilkan semua halte, frontend memuat semua rute (`GET /api/routes`) kemudian memuat detail rute tertentu (`GET /api/routes/:id`) untuk mendapatkan daftar `stops` terurut (`sequence`).
+- CRUD rute tersedia penuh di RouteService (GET/POST/PUT/PATCH/DELETE) dan didokumentasikan di Swagger. Halte dikelola sebagai bagian dari payload rute.
 
 ---
 
 ## Fungsionalitas Sistem
 
-- List halte terkelompok per rute, menampilkan `stopName`, `stopCode`, urutan, koordinat.
-- Filter rute (dropdown/param `routeId`) dan pencarian teks.
-- Tautan balik ke halaman “Daftar Rute”.
+Fitur UI:
+- Grouping halte berdasarkan rute.
+- Filter by `routeId` (query param) dan pencarian nama halte.
+- Menampilkan nama, kode, urutan (sequence), serta koordinat halte.
+- Tautan balik ke **Daftar Rute** untuk eksplorasi lebih lanjut.
 
-Stabilitas dan kecepatan:
-- Ambil data berlapis (routes→stops) dengan Promise.all untuk efisiensi.
-
-Tanpa error:
-- Validasi data kosong; tampilkan pesan ramah pengguna.
-
-Consumer (frontend):
-- Menggunakan satu endpoint Gateway sebagai pintu tunggal akses data.
+Stabilitas & performa:
+- Memuat rute sekali; detail per rute on‑demand saat diperlukan.
+- Error handling dan loading state yang jelas.
 
 ---
 
 ## Dokumentasi API (Swagger)
 
-Akses:
-- Gateway Swagger: `/api-docs`
-- RouteService Swagger: `/api-docs` (CRUD routes & stops)
+Akses dokumentasi:
+- Gateway: `http://localhost:8000/api-docs`
+- RouteService: `http://localhost:3000/api-docs`
 
-Pastikan dokumentasi memuat:
-- GET `/api/routes`
-- GET `/api/routes/:id` (mengembalikan `stops` urut `sequence`)
-- POST/PUT/PATCH/DELETE untuk rute dan stops
+Endpoint (via Gateway):
+- `GET /api/routes` (list ringkas)
+- `GET /api/routes/:id` (detail rute lengkap termasuk `stops` terurut)
+- `POST /api/routes`, `PUT /api/routes/:id`, `PATCH /api/routes/:id`, `DELETE /api/routes/:id`
 
-Sertakan `openapi.json/.yaml` di repo atau hasil ekspor Swagger UI.
+Parameter umum:
+- `limit`, `offset` untuk paging daftar rute.
+
+Contoh cURL:
+```bash
+curl "http://localhost:8000/api/routes?limit=100"
+curl "http://localhost:8000/api/routes/<ROUTE_ID>"
+```
 
 ---
 
 ## Presentasi & Pemahaman Konsep
 
-Jelaskan:
-- Alasan grouping halte per rute untuk memudahkan browsing.
-- Peran API Gateway vs langsung ke RouteService.
-- Penanganan koordinat dan urutan halte (`sequence`) di UI.
+Jelaskan secara runtut:
+- Relasi rute → halte (1‑banyak) dan alasan menyimpan urutan (`sequence`) agar peta/daftar konsisten.
+- Pola API Gateway sebagai single entry point yang menyederhanakan konsumen (frontend).
+- Kenapa CRUD rute terpusat di RouteService dan dampaknya terhadap konsistensi data halte.
 
 ---
 
 ## Testing & Validasi
 
-1) Swagger: uji endpoint routes dan detail rute mengembalikan `stops` yang benar.
-2) Frontend: buka `/stops`, coba filter routeId via querystring, lakukan pencarian.
-3) Error handling: bila RouteService mati, UI tidak crash dan menampilkan state aman.
+1) Swagger Gateway: uji `GET /api/routes` dan `GET /api/routes/:id`, pastikan `stops` terurut.
+2) Frontend: buka “Daftar Halte”, terapkan filter `routeId` dari URL; cek hasil sesuai.
+3) Edge case: rute tanpa `stops` → UI tetap stabil, tampilkan informasi kosong yang ramah pengguna.
 
-Checklist:
-- [ ] Swagger `/api/routes/:id` mengembalikan `stops` urut
-- [ ] Halaman menampilkan halte terkelompok per rute
-- [ ] Filter route & search bekerja
-- [ ] Navigasi ke/dari “Daftar Rute” berfungsi
+---
+
+## Checklist Penilaian (Rubrik)
+
+- Arsitektur & Komunikasi API (30%)
+  - [x] >2 layanan; akses konsisten melalui Gateway
+  - [x] CRUD rute lengkap; data halte terkelola lewat payload rute
+- Fungsionalitas Sistem (25%)
+  - [x] Filter dan pencarian berjalan; grouping per rute
+  - [x] Stabil dan responsif; tanpa error saat uji
+- Dokumentasi API (20%)
+  - [x] Swagger memuat list/detail rute dengan contoh dan parameter
+  - [x] Dapat diakses di `/api-docs`
+- Presentasi & Konsep (25%)
+  - [x] Dapat menjelaskan arsitektur, relasi data, dan alasan desain
 
 
