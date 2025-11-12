@@ -2,7 +2,8 @@
   "name": "transtrack-monorepo",
   "version": "1.0.0",
   "scripts": {
-    "setup": "npm --prefix frontend install --no-audit --no-fund && npm --prefix backend/gatewayservice install --no-audit --no-fund && npm --prefix backend/routeservice install --no-audit --no-fund && npm --prefix backend/driverservice install --no-audit --no-fund && npm --prefix backend/userservice install --no-audit --no-fund && npm --prefix backend/maintenanceservice install --no-audit --no-fund && npm --prefix backend/ticketservice install --no-audit --no-fund && npm --prefix backend/scheduleservice install --no-audit --no-fund && npm --prefix backend/busservice install --no-audit --no-fund && npm run migrate:all",
+    "platform-check": "node scripts/platform-check.js",
+    "setup": "node scripts/platform-check.js && npm --prefix frontend install --no-audit --no-fund && npm --prefix backend/gatewayservice install --no-audit --no-fund && npm --prefix backend/routeservice install --no-audit --no-fund && npm --prefix backend/driverservice install --no-audit --no-fund && npm --prefix backend/userservice install --no-audit --no-fund && npm --prefix backend/maintenanceservice install --no-audit --no-fund && npm --prefix backend/ticketservice install --no-audit --no-fund && npm --prefix backend/scheduleservice install --no-audit --no-fund && npm --prefix backend/busservice install --no-audit --no-fund && npm run migrate:all",
     "migrate:all": "npm run migrate:routeservice && npm run migrate:driverservice && npm run migrate:userservice && npm run migrate:maintenanceservice && npm run migrate:ticketservice && npm run setup:scheduleservice && npm run setup:busservice",
     "migrate:routeservice": "npm --prefix backend/routeservice run migrate",
     "migrate:driverservice": "npm --prefix backend/driverservice run setup",
@@ -21,7 +22,7 @@
     "dev:ticketservice": "cross-env PORT=3004 npm --prefix backend/ticketservice run dev",
     "dev:scheduleservice": "cross-env PORT=3005 npm --prefix backend/scheduleservice run dev",
     "dev:busservice": "cross-env PORT=3006 npm --prefix backend/busservice run dev",
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:gatewayservice\" \"npm run dev:driverservice\" \"npm run dev:maintenanceservice\" \"npm run dev:routeservice\" \"npm run dev:userservice\" \"npm run dev:ticketservice\" \"npm run dev:scheduleservice\" \"npm run dev:busservice\""
+    "dev": "node scripts/platform-check.js && concurrently \"npm run dev:frontend\" \"npm run dev:gatewayservice\" \"npm run dev:driverservice\" \"npm run dev:maintenanceservice\" \"npm run dev:routeservice\" \"npm run dev:userservice\" \"npm run dev:ticketservice\" \"npm run dev:scheduleservice\" \"npm run dev:busservice\""
   },
   "dependencies": {
     "node-pg-migrate": "^8.0.3",
