@@ -85,7 +85,7 @@ Proyek ini menggunakan **arsitektur microservice** dengan setiap service sebagai
 
 ## 🧭 Deskripsi Singkat
 
-TransTrack adalah sistem manajemen transportasi berbasis arsitektur microservice. Setiap service bertanggung jawab pada domain tertentu (rute, pengemudi, pengguna, perawatan), menggunakan PostgreSQL, terdokumentasi dengan Swagger, dan dapat dijalankan mandiri. Frontend React disediakan sebagai antarmuka dasar untuk demonstrasi.
+TransTrack adalah platform manajemen transportasi publik berbasis arsitektur microservice. Setiap domain—rute, jadwal, armada bus, pengemudi, tiket, perawatan, dan pengguna—dipisahkan ke service Node.js + PostgreSQL dengan dokumentasi Swagger. API Gateway menyatukan komunikasi ke frontend React (halaman tracking, rute, halte, jadwal, tiket), sementara dokumentasi OpenAPI diekspor ke `docs/openapi/*.json` untuk kebutuhan presentasi dan penilaian UTS.
 
 ---
 
