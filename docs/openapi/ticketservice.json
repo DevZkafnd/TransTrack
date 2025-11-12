@@ -1,0 +1,168 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "TransTrack - TicketService API",
+    "version": "1.0.0",
+    "description": "API untuk mengelola pembelian dan validasi tiket"
+  },
+  "paths": {
+    "/api/tickets": {
+      "post": {
+        "summary": "Membuat tiket baru (status pending)",
+        "tags": [
+          "Tickets"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "scheduleId",
+                  "amount"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "scheduleId": {
+                    "type": "string"
+                  },
+                  "scheduleLabel": {
+                    "type": "string",
+                    "description": "Label jadwal untuk riwayat pengguna (maks 160 karakter)"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "description": "Harga tiket (0 - 9,999,999,999.99)"
+                  },
+                  "currency": {
+                    "type": "string",
+                    "example": "IDR"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Tiket dibuat"
+          }
+        }
+      },
+      "get": {
+        "summary": "Daftar tiket milik pengguna",
+        "tags": [
+          "Tickets"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar tiket"
+          }
+        }
+      }
+    },
+    "/api/tickets/{id}": {
+      "get": {
+        "summary": "Mendapatkan detail tiket",
+        "tags": [
+          "Tickets"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detail tiket"
+          }
+        }
+      }
+    },
+    "/api/tickets/{id}/status": {
+      "patch": {
+        "summary": "Update status tiket (contoh: success/failed)",
+        "tags": [
+          "Tickets"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string"
+                  },
+                  "paymentRef": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tickets/validate": {
+      "post": {
+        "summary": "Validasi tiket dengan kode/id",
+        "tags": [
+          "Tickets"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Hasil validasi"
+          }
+        }
+      }
+    }
+  },
+  "components": {},
+  "tags": []
+}

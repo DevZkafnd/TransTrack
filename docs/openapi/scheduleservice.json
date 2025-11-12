@@ -1,0 +1,649 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "ScheduleService API",
+    "version": "1.0.0",
+    "description": "API Provider untuk mengelola data jadwal perjalanan bus pada TransTrack microservice architecture",
+    "contact": {
+      "name": "TransTrack API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3005",
+      "description": "Server pengembangan"
+    },
+    {
+      "url": "https://api.transtrack.com",
+      "description": "Server produksi"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Schedule": {
+        "type": "object",
+        "required": [
+          "routeId",
+          "routeName",
+          "busId",
+          "busPlate",
+          "driverId",
+          "driverName",
+          "time"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID jadwal yang dibuat otomatis",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "routeId": {
+            "type": "string",
+            "description": "ID rute",
+            "example": "550e8400-e29b-41d4-a716-446655440001"
+          },
+          "routeName": {
+            "type": "string",
+            "description": "Nama rute",
+            "example": "Jakarta - Bandung"
+          },
+          "busId": {
+            "type": "string",
+            "description": "ID bus",
+            "example": "BUS-001"
+          },
+          "busPlate": {
+            "type": "string",
+            "description": "Plat nomor bus",
+            "example": "B 1234 CD"
+          },
+          "driverId": {
+            "type": "string",
+            "description": "ID pengemudi",
+            "example": "550e8400-e29b-41d4-a716-446655440002"
+          },
+          "driverName": {
+            "type": "string",
+            "description": "Nama pengemudi",
+            "example": "Budi Santoso"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Waktu keberangkatan",
+            "example": "2025-11-10T09:00:00Z"
+          },
+          "ticketId": {
+            "type": "string",
+            "description": "ID tiket terkait (opsional)",
+            "example": "550e8400-e29b-41d4-a716-446655440003"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp pembuatan jadwal"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp pembaruan terakhir jadwal"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "description": "Pesan kesalahan",
+            "example": "Jadwal tidak ditemukan"
+          },
+          "message": {
+            "type": "string",
+            "description": "Detail kesalahan",
+            "example": "Jadwal dengan ID 550e8400-e29b-41d4-a716-446655440000 tidak ditemukan"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/holidays": {
+      "get": {
+        "summary": "Mendapatkan daftar hari libur atau cek by date",
+        "tags": [
+          "Holidays"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Jika diisi (YYYY-MM-DD), hanya mengembalikan libur pada tanggal tersebut"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar hari libur"
+          }
+        }
+      }
+    },
+    "/api/schedules": {
+      "get": {
+        "summary": "Mendapatkan semua jadwal",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "routeId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter jadwal berdasarkan route ID"
+          },
+          {
+            "in": "query",
+            "name": "busId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter jadwal berdasarkan bus ID"
+          },
+          {
+            "in": "query",
+            "name": "driverId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter jadwal berdasarkan driver ID"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            },
+            "description": "Jumlah maksimal jadwal yang dikembalikan"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Offset untuk pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar jadwal berhasil diambil",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Schedule"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "example": 10
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Membuat jadwal baru",
+        "tags": [
+          "Schedules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "routeId",
+                  "routeName",
+                  "busId",
+                  "busPlate",
+                  "driverId",
+                  "driverName",
+                  "time"
+                ],
+                "properties": {
+                  "routeId": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440001"
+                  },
+                  "routeName": {
+                    "type": "string",
+                    "example": "Jakarta - Bandung"
+                  },
+                  "busId": {
+                    "type": "string",
+                    "example": "BUS-001"
+                  },
+                  "busPlate": {
+                    "type": "string",
+                    "example": "B 1234 CD"
+                  },
+                  "driverId": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440002"
+                  },
+                  "driverName": {
+                    "type": "string",
+                    "example": "Budi Santoso"
+                  },
+                  "time": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2025-11-10T09:00:00Z"
+                  },
+                  "ticketId": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440003"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Jadwal berhasil dibuat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Jadwal berhasil dibuat"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Schedule"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Permintaan tidak valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schedules/{id}": {
+      "get": {
+        "summary": "Mendapatkan jadwal berdasarkan ID",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID jadwal"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jadwal berhasil diambil",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Schedule"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Jadwal tidak ditemukan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update seluruh data jadwal",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID jadwal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "routeId",
+                  "routeName",
+                  "busId",
+                  "busPlate",
+                  "driverId",
+                  "driverName",
+                  "time"
+                ],
+                "properties": {
+                  "routeId": {
+                    "type": "string"
+                  },
+                  "routeName": {
+                    "type": "string"
+                  },
+                  "busId": {
+                    "type": "string"
+                  },
+                  "busPlate": {
+                    "type": "string"
+                  },
+                  "driverId": {
+                    "type": "string"
+                  },
+                  "driverName": {
+                    "type": "string"
+                  },
+                  "time": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "ticketId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Jadwal berhasil diupdate"
+          },
+          "400": {
+            "description": "Permintaan tidak valid"
+          },
+          "404": {
+            "description": "Jadwal tidak ditemukan"
+          },
+          "500": {
+            "description": "Kesalahan server"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Menghapus jadwal",
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID jadwal"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jadwal berhasil dihapus"
+          },
+          "404": {
+            "description": "Jadwal tidak ditemukan"
+          },
+          "500": {
+            "description": "Kesalahan server"
+          }
+        }
+      }
+    },
+    "/api/schedules/live-schedule": {
+      "get": {
+        "summary": "Mendapatkan bus yang sedang beroperasi dengan data lengkap (aggregated)",
+        "description": "Endpoint ini mengembalikan bus yang sedang beroperasi dengan menggabungkan data dari:\n- BusService: Data bus (plat, model, capacity)\n- ScheduleService: Schedule terbaru untuk setiap bus (jika ada, dari pembayaran user)\n- RouteService: Nama rute lengkap dari schedule\n- DriverService: Nama pengemudi dari schedule\n- MaintenanceService: Status maintenance bus\n",
+        "tags": [
+          "Schedules"
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar bus beroperasi dengan data lengkap",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "rute": {
+                            "type": "string",
+                            "example": "Rute B - Terminal Kota gambir ke Terminal Kota Sawangan"
+                          },
+                          "bus": {
+                            "type": "string",
+                            "example": "B 1234 CD"
+                          },
+                          "pengemudi": {
+                            "type": "string",
+                            "example": "Budi Santoso"
+                          },
+                          "waktu_keberangkatan": {
+                            "type": "string",
+                            "example": "8 Nov 2025, 06:26"
+                          },
+                          "status": {
+                            "type": "string",
+                            "example": "Beroperasi"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schedule-templates": {
+      "get": {
+        "summary": "Mendapatkan template jadwal per rute",
+        "tags": [
+          "ScheduleTemplates"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "routeId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter berdasarkan routeId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar template"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Endpoint pengecekan kesehatan layanan",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Layanan berjalan dengan baik",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "OK"
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "ScheduleService"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Holidays",
+      "description": "API untuk data hari libur"
+    },
+    {
+      "name": "ScheduleTemplates",
+      "description": "Template waktu default jadwal per rute"
+    }
+  ]
+}

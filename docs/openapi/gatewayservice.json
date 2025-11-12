@@ -1,0 +1,311 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "API Gateway - TransTrack",
+    "version": "1.0.0",
+    "description": "API Gateway sebagai entry point tunggal untuk semua service TransTrack"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Development server"
+    }
+  ],
+  "paths": {
+    "/api/routes": {
+      "get": {
+        "summary": "Get all routes (proxied to RouteService)",
+        "tags": [
+          "Routes"
+        ],
+        "responses": {
+          "200": {
+            "description": "List of routes"
+          }
+        }
+      }
+    },
+    "/api/drivers": {
+      "get": {
+        "summary": "Get all drivers (proxied to DriverService)",
+        "tags": [
+          "Drivers"
+        ],
+        "responses": {
+          "200": {
+            "description": "List of drivers"
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "summary": "Get all users (proxied to UserService)",
+        "tags": [
+          "Users"
+        ]
+      },
+      "post": {
+        "summary": "Register new user (proxied to UserService)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/maintenance": {
+      "get": {
+        "summary": "Get maintenance data (proxied to MaintenanceService)",
+        "tags": [
+          "Maintenance"
+        ]
+      },
+      "post": {
+        "summary": "Create maintenance record (proxied to MaintenanceService)",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
+    "/api/tickets": {
+      "get": {
+        "summary": "Get tickets (proxied to TicketService)",
+        "tags": [
+          "Tickets"
+        ]
+      },
+      "post": {
+        "summary": "Create ticket (proxied to TicketService)",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
+    "/api/dashboard/operating-buses": {
+      "get": {
+        "summary": "Get all buses with their operating status and route (aggregated from BusService, MaintenanceService, ScheduleService, and RouteService)",
+        "description": "Endpoint ini mengembalikan semua bus dari BusService dengan:\n- Status maintenance dari MaintenanceService\n- Rute terbaru dari ScheduleService (jika ada)\n- Detail rute dari RouteService\n",
+        "tags": [
+          "Dashboard"
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar bus dengan status operasi dan rute",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bus": {
+                            "type": "string",
+                            "example": "B 1234 CD"
+                          },
+                          "model": {
+                            "type": "string",
+                            "example": "Mercedes-Benz Tourismo"
+                          },
+                          "capacity": {
+                            "type": "integer",
+                            "example": 40
+                          },
+                          "rute": {
+                            "type": "string",
+                            "example": "Rute A - Terminal Kota ke Terminal Bandara"
+                          },
+                          "status": {
+                            "type": "string",
+                            "example": "Beroperasi"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server"
+          }
+        }
+      }
+    },
+    "/api/schedules/ensure-for-date": {
+      "post": {
+        "summary": "Pastikan setiap rute memiliki minimal satu jadwal pada tanggal tertentu (kecuali libur nasional dan bus maintenance)",
+        "tags": [
+          "Schedules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2025-11-15"
+                  },
+                  "routeId": {
+                    "type": "string",
+                    "description": "Jika diisi, hanya memastikan jadwal untuk rute tersebut",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                  },
+                  "times": {
+                    "type": "array",
+                    "description": "Daftar jam keberangkatan (format HH:mm, waktu lokal)",
+                    "items": {
+                      "type": "string",
+                      "example": "09:00"
+                    },
+                    "example": [
+                      "09:00"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Proses ensure selesai"
+          }
+        }
+      }
+    },
+    "/api/schedules": {
+      "get": {
+        "summary": "Get schedules (proxied to ScheduleService)",
+        "tags": [
+          "Schedules"
+        ]
+      },
+      "post": {
+        "summary": "Create schedule (proxied to ScheduleService)",
+        "tags": [
+          "Schedules"
+        ]
+      }
+    },
+    "/api/buses": {
+      "get": {
+        "summary": "Get all buses (proxied to BusService)",
+        "tags": [
+          "Buses"
+        ]
+      },
+      "post": {
+        "summary": "Create bus (proxied to BusService)",
+        "tags": [
+          "Buses"
+        ]
+      }
+    },
+    "/api/dashboard/tracking": {
+      "get": {
+        "summary": "Get all buses with tracking information (routes, stops, drivers, schedules)",
+        "description": "Endpoint ini mengembalikan semua bus dengan informasi tracking lengkap:\n- Data bus dari BusService\n- Route dan stops (coordinates) dari RouteService\n- Driver dari DriverService\n- Schedule terbaru dari ScheduleService\n- Posisi bus (simulasi berdasarkan schedule)\n",
+        "tags": [
+          "Dashboard"
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar bus dengan informasi tracking",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "busId": {
+                            "type": "string"
+                          },
+                          "bus": {
+                            "type": "string",
+                            "example": "B 1234 CD"
+                          },
+                          "model": {
+                            "type": "string"
+                          },
+                          "capacity": {
+                            "type": "integer"
+                          },
+                          "route": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "routeName": {
+                                "type": "string"
+                              },
+                              "routeCode": {
+                                "type": "string"
+                              },
+                              "stops": {
+                                "type": "array"
+                              }
+                            }
+                          },
+                          "driver": {
+                            "type": "object"
+                          },
+                          "position": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            }
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health check endpoint",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Gateway service is healthy"
+          }
+        }
+      }
+    }
+  },
+  "components": {},
+  "tags": []
+}

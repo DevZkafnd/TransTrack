@@ -134,13 +134,21 @@ npm run dev
 - TicketService Swagger: `http://localhost:3004/api-docs`
 - ScheduleService Swagger: `http://localhost:3005/api-docs`
 
-5) Variabel lingkungan (.env) per service
+5) Ekspor dokumentasi OpenAPI (static file untuk penilaian/offline review)
+
+```bash
+npm run export:openapi
+```
+
+Hasil ekspor tersedia di folder `docs/openapi/*.json` untuk setiap service (`gatewayservice.json`, `routeservice.json`, dst). Berkas ini siap dikirim bersama laporan UTS.
+
+6) Variabel lingkungan (.env) per service
 
 - Salin `env.example` → `.env` di setiap folder service dalam `backend/*service/` lalu sesuaikan koneksi PostgreSQL.
 - Untuk frontend, Anda tidak wajib mengubah `.env` saat pengembangan: klien otomatis menggunakan GatewayService di `http://localhost:8000/api` (default).
 - GatewayService mengkonfigurasi URL semua service melalui environment variables (lihat `backend/gatewayservice/env.example`).
 
-6) Login/Daftar & Pembelian Tiket
+7) Login/Daftar & Pembelian Tiket
 
 - Gunakan modal login/daftar dari frontend (menyambung ke `UserService` via GatewayService).
 - Halaman pembelian tiket ada di `/ticket`. Saat "Bayar Sekarang":
@@ -149,7 +157,7 @@ npm run dev
   - **TicketService memvalidasi user dengan memanggil UserService** (inter-service communication)
   - Jika user valid, tiket dibuat dan ditandai success
 
-7) Troubleshooting umum
+8) Troubleshooting umum
 
 - Port bentrok → hentikan proses lama (Windows PowerShell: `netstat -ano | findstr :<PORT>` lalu kill PID) atau ubah `PORT` di `.env` service terkait.
 - Connection refused ke API → pastikan service tujuan up (cek `/health`) dan base URL frontend sesuai (frontend fallback otomatis ke 3002 untuk user saat dev).
@@ -158,7 +166,7 @@ npm run dev
 - OSRM routing 429: frontend sudah memakai antrian + retry + cache; tunggu beberapa detik atau zoom region lain.
 - Error NaN pada ScheduleService (bigint) → parameter `limit`/`offset` wajib integer; service sudah memiliki fallback aman.
 
-8) Repository
+9) Repository
 
 - GitHub: `https://github.com/DevZkafnd/TransTrack.git`
 

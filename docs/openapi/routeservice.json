@@ -1,0 +1,830 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "RouteService API",
+    "version": "1.0.0",
+    "description": "API Provider untuk mengelola data master rute dan halte pada TransTrack microservice architecture",
+    "contact": {
+      "name": "TransTrack API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Server pengembangan"
+    },
+    {
+      "url": "https://api.transtrack.com",
+      "description": "Server produksi"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Route": {
+        "type": "object",
+        "required": [
+          "routeName",
+          "routeCode",
+          "stops"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID rute yang dibuat otomatis oleh Firestore",
+            "example": "route_abc123"
+          },
+          "routeName": {
+            "type": "string",
+            "description": "Nama rute",
+            "example": "Rute A - Terminal Kota ke Terminal Bandara"
+          },
+          "routeCode": {
+            "type": "string",
+            "description": "Kode unik rute",
+            "example": "RT-001"
+          },
+          "description": {
+            "type": "string",
+            "description": "Deskripsi rute",
+            "example": "Rute utama menghubungkan terminal kota dengan bandara"
+          },
+          "stops": {
+            "type": "array",
+            "description": "Daftar halte dalam rute",
+            "items": {
+              "$ref": "#/components/schemas/Stop"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive",
+              "maintenance"
+            ],
+            "description": "Status rute",
+            "example": "active",
+            "default": "active"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp pembuatan rute"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp pembaruan terakhir rute"
+          }
+        }
+      },
+      "Stop": {
+        "type": "object",
+        "required": [
+          "stopName",
+          "stopCode",
+          "latitude",
+          "longitude"
+        ],
+        "properties": {
+          "stopName": {
+            "type": "string",
+            "description": "Nama halte",
+            "example": "Halte Terminal Kota"
+          },
+          "stopCode": {
+            "type": "string",
+            "description": "Kode unik halte",
+            "example": "STP-001"
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double",
+            "description": "Koordinat latitude halte",
+            "example": -6.2088
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double",
+            "description": "Koordinat longitude halte",
+            "example": 106.8456
+          },
+          "address": {
+            "type": "string",
+            "description": "Alamat halte",
+            "example": "Jl. Terminal Kota No. 1"
+          },
+          "sequence": {
+            "type": "integer",
+            "description": "Urutan halte dalam rute",
+            "example": 1
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Pesan kesalahan",
+            "example": "Rute tidak ditemukan"
+          },
+          "message": {
+            "type": "string",
+            "description": "Detail kesalahan",
+            "example": "Rute dengan ID route_abc123 tidak ditemukan"
+          }
+        }
+      },
+      "Success": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operasi berhasil diselesaikan"
+          },
+          "data": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/routes": {
+      "get": {
+        "summary": "Mendapatkan semua rute",
+        "tags": [
+          "Routes"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "inactive",
+                "maintenance"
+              ]
+            },
+            "description": "Filter rute berdasarkan status"
+          },
+          {
+            "in": "query",
+            "name": "busId",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter rute berdasarkan bus ID"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            },
+            "description": "Jumlah maksimal rute yang dikembalikan"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Offset untuk pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daftar rute berhasil diambil",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Route"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "example": 10
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Membuat rute baru",
+        "tags": [
+          "Routes"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "routeName",
+                  "routeCode",
+                  "stops"
+                ],
+                "properties": {
+                  "routeName": {
+                    "type": "string",
+                    "example": "Rute A - Terminal Kota ke Terminal Bandara"
+                  },
+                  "routeCode": {
+                    "type": "string",
+                    "example": "RT-001"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Rute utama menghubungkan terminal kota dengan bandara"
+                  },
+                  "stops": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Stop"
+                    }
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "inactive",
+                      "maintenance"
+                    ],
+                    "default": "active"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Rute berhasil dibuat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Rute berhasil dibuat"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Route"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Permintaan tidak valid - Data tidak valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/routes/assign-buses": {
+      "post": {
+        "summary": "Trigger assign buses ke routes (auto-assign)",
+        "description": "Endpoint ini akan menjalankan proses assign buses ke routes:\n1. Auto-assign dari ScheduleService\n2. Assign unused buses ke routes yang masih null\n3. Assign buses ke routes yang masih null\n",
+        "tags": [
+          "Routes"
+        ],
+        "responses": {
+          "200": {
+            "description": "Proses assign buses berhasil dijalankan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Proses assign buses berhasil dijalankan"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "example": "processing"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server"
+          }
+        }
+      }
+    },
+    "/api/routes/{id}": {
+      "get": {
+        "summary": "Mendapatkan rute berdasarkan ID",
+        "tags": [
+          "Routes"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID rute"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rute berhasil diambil",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Route"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rute tidak ditemukan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update seluruh data rute",
+        "tags": [
+          "Routes"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID rute"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "routeName",
+                  "routeCode",
+                  "stops"
+                ],
+                "properties": {
+                  "routeName": {
+                    "type": "string"
+                  },
+                  "routeCode": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "stops": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Stop"
+                    }
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "inactive",
+                      "maintenance"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rute berhasil diupdate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Rute berhasil diperbarui"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Route"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Permintaan tidak valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rute tidak ditemukan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update sebagian data rute (partial update)",
+        "tags": [
+          "Routes"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID rute"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "routeName": {
+                    "type": "string"
+                  },
+                  "routeCode": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "stops": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Stop"
+                    }
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "inactive",
+                      "maintenance"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rute berhasil diupdate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Rute berhasil diperbarui"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Route"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Permintaan tidak valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rute tidak ditemukan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Menghapus rute",
+        "tags": [
+          "Routes"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID rute"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rute berhasil dihapus",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Rute berhasil dihapus"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rute tidak ditemukan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/routes/{id}/assign-bus": {
+      "post": {
+        "summary": "Assign bus ke route",
+        "tags": [
+          "Routes"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID rute"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "busId"
+                ],
+                "properties": {
+                  "busId": {
+                    "type": "string",
+                    "description": "UUID bus dari BusService",
+                    "example": "2dc317f0-416b-48be-943e-18c14d2e59xx"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bus berhasil di-assign ke route",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Bus berhasil di-assign ke route"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Route"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bus tidak ditemukan atau data tidak valid"
+          },
+          "404": {
+            "description": "Route tidak ditemukan"
+          },
+          "500": {
+            "description": "Kesalahan server"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Endpoint pengecekan kesehatan layanan",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Layanan berjalan dengan baik",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "OK"
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "RouteService"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

@@ -1,0 +1,478 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "MaintenanceService API",
+    "version": "1.0.0",
+    "description": "API Provider untuk mengelola data master riwayat dan jadwal perbaikan bus pada TransTrack microservice architecture",
+    "contact": {
+      "name": "TransTrack API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3003",
+      "description": "Server pengembangan"
+    },
+    {
+      "url": "https://api.transtrack.com",
+      "description": "Server produksi"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Maintenance": {
+        "type": "object",
+        "required": [
+          "busId",
+          "maintenanceType",
+          "description",
+          "scheduledDate"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID maintenance yang dibuat otomatis oleh database",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "busId": {
+            "type": "string",
+            "description": "ID bus yang akan diperbaiki",
+            "example": "BUS-001"
+          },
+          "maintenanceType": {
+            "type": "string",
+            "description": "Jenis perbaikan",
+            "example": "Routine Service"
+          },
+          "description": {
+            "type": "string",
+            "description": "Deskripsi perbaikan",
+            "example": "Ganti oli mesin dan filter udara"
+          },
+          "scheduledDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Tanggal dan waktu jadwal perbaikan"
+          },
+          "completedDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Tanggal dan waktu selesai perbaikan",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "in_progress",
+              "completed",
+              "cancelled"
+            ],
+            "description": "Status perbaikan",
+            "example": "scheduled",
+            "default": "scheduled"
+          },
+          "cost": {
+            "type": "number",
+            "format": "double",
+            "description": "Biaya perbaikan",
+            "example": 500000,
+            "nullable": true
+          },
+          "mechanicName": {
+            "type": "string",
+            "description": "Nama mekanik yang menangani",
+            "example": "Budi Santoso",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "description": "Catatan tambahan",
+            "example": "Perlu pengecekan rem setelah service",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp pembuatan data maintenance"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp pembaruan terakhir data maintenance"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "description": "Pesan kesalahan",
+            "example": "Maintenance tidak ditemukan"
+          },
+          "message": {
+            "type": "string",
+            "description": "Detail kesalahan",
+            "example": "Maintenance dengan ID 550e8400-e29b-41d4-a716-446655440000 tidak ditemukan"
+          }
+        }
+      },
+      "Success": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operasi berhasil diselesaikan"
+          },
+          "data": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/maintenance": {
+      "post": {
+        "summary": "Membuat jadwal perbaikan baru",
+        "tags": [
+          "Maintenance"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "busId",
+                  "maintenanceType",
+                  "description",
+                  "scheduledDate"
+                ],
+                "properties": {
+                  "busId": {
+                    "type": "string",
+                    "example": "BUS-001"
+                  },
+                  "maintenanceType": {
+                    "type": "string",
+                    "example": "Routine Service"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Ganti oli mesin dan filter udara"
+                  },
+                  "scheduledDate": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2025-11-10T10:00:00Z"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "scheduled",
+                      "in_progress",
+                      "completed",
+                      "cancelled"
+                    ],
+                    "default": "scheduled"
+                  },
+                  "cost": {
+                    "type": "number",
+                    "example": 500000
+                  },
+                  "mechanicName": {
+                    "type": "string",
+                    "example": "Budi Santoso"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "example": "Perlu pengecekan rem setelah service"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Jadwal perbaikan berhasil dibuat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Jadwal perbaikan berhasil dibuat"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Maintenance"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Permintaan tidak valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/maintenance/bus/{bus_id}": {
+      "get": {
+        "summary": "Mendapatkan riwayat perbaikan berdasarkan ID bus",
+        "tags": [
+          "Maintenance"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bus_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID bus"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "scheduled",
+                "in_progress",
+                "completed",
+                "cancelled"
+              ]
+            },
+            "description": "Filter berdasarkan status"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            },
+            "description": "Jumlah maksimal data yang dikembalikan"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Offset untuk pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Riwayat perbaikan berhasil diambil",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Maintenance"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "example": 10
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/maintenance/{id}/complete": {
+      "put": {
+        "summary": "Menandai perbaikan sebagai selesai atau mengupdate data perbaikan yang sudah selesai",
+        "description": "- Jika status belum completed: akan mengubah status menjadi 'completed' dan mengisi completed_date dengan waktu sekarang\n- Jika status sudah completed: hanya akan mengupdate cost, mechanicName, dan notes tanpa mengubah completed_date\n",
+        "tags": [
+          "Maintenance"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID maintenance"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cost": {
+                    "type": "number",
+                    "example": 500000
+                  },
+                  "mechanicName": {
+                    "type": "string",
+                    "example": "Budi Santoso"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "example": "Semua komponen sudah diganti"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Perbaikan berhasil ditandai selesai",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Perbaikan berhasil ditandai selesai"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Maintenance"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Permintaan tidak valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Maintenance tidak ditemukan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Kesalahan server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Endpoint pengecekan kesehatan layanan",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Layanan berjalan dengan baik",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "OK"
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "MaintenanceService"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}
